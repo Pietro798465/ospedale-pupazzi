@@ -390,39 +390,25 @@ html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--green)
         </div>
       </div>
 
-    <!-- Pannello Raggi X -->
+      <!-- Pannello Raggi X -->
       <div class="exam-panel hidden" id="exam-xray">
         <div class="exam-topbar">
           <h3>MODULO 3 · RAGGI X</h3>
           <button class="btn-back" data-back>◀ TORNA ALLA DASHBOARD</button>
         </div>
         <div class="xray-body" id="xrayBody">
-          
-          <!-- NUOVO MENU RAGGI X (Nascosto finché non si accende la cam) -->
-          <div id="xrayMenu" class="hidden" style="position:absolute; top:10px; left:10px; right:10px; z-index:10; display:flex; gap:10px; background:rgba(0,0,0,0.7); padding:10px; border-radius:10px; border:1px solid var(--green);">
-            <select id="xraySelect" style="flex:1; background:#000; color:var(--green); border:1px solid var(--green); padding:10px; font-family:var(--font-mono); font-size:14px;">
-              <option value="rx-cranio-fronte.png">Cranio (Fronte)</option>
-              <option value="rx-cranio-lato.png">Cranio (Lato)</option>
-              <option value="rx-torace.png">Torace</option>
-              <option value="rx-mano.png">Mano</option>
-              <option value="rx-piede.png">Piede</option>
-              <option value="rx-ginocchia.png">Ginocchia</option>
-              <option value="rx-bacino.png">Bacino</option>
-              <option value="rx-scheletro-intero.png">Scheletro Intero</option>
-            </select>
-            <button id="btnScattaRx" style="background:#00ff6a; color:#000; font-weight:bold; border:none; padding:10px 20px; border-radius:5px; cursor:pointer;">📸 SCATTA FOTO</button>
-          </div>
-
           <div class="xray-placeholder" id="xrayPlaceholder">
             <div style="font-size:46px;">📷</div>
-            <div>Accendi la telecamera per inquadrare il paziente</div>
+            <div>Accendi la telecamera per inquadrare il pupazzo</div>
             <button id="btnStartCamera">ACCENDI TELECAMERA</button>
           </div>
-          <video id="xray-video" class="hidden" autoplay playsinline muted crossorigin="anonymous"></video>
-          <img id="xray-overlay" class="hidden" draggable="false" crossorigin="anonymous">
-          <div id="flash-effect" style="position:absolute; inset:0; background:white; opacity:0; pointer-events:none; transition:opacity 0.2s; z-index:100;"></div>
+          <video id="xray-video" class="hidden" autoplay playsinline muted></video>
+          <img id="xray-overlay" class="hidden" draggable="false">
+          <button class="xray-reset hidden" id="btnResetOverlay">RIALLINEA</button>
+          <div class="xray-hint hidden" id="xrayHint">Trascina lo scheletro per allinearlo al pupazzo</div>
         </div>
       </div>
+    </div>
 
     <div class="visit-footer">
       <button id="btn-referto">🖨 TERMINA VISITA E STAMPA REFERTO</button>
@@ -884,6 +870,20 @@ function initEcoIfNeeded(){
     if(w===0 || h===0){ ecoRAF = requestAnimationFrame(drawEcoOverlay); return; }
     ctx.clearRect(0,0,w,h);
     
+    // Effetto grana verde leggerissimo sopra il video
+    ctx.fillStyle = 'rgba(0, 255, 106, 0.03)';
+    for(let i=0; i<150; i++) ctx.fillRect(Math.random()*w, Math.random()*h, 2, 2);
+
+    // Linea verde di scansione
+    sweepX = (sweepX+3)%w;
+    const grad = ctx.createLinearGradient(sweepX-40,0,sweepX,0);
+    grad.addColorStop(0,'rgba(0,255,106,0)'); grad.addColorStop(1,'rgba(0,255,106,0.35)');
+    ctx.fillStyle = grad; ctx.fillRect(sweepX-40,0,40,h);
+    
+    ecoRAF = requestAnimationFrame(drawEcoOverlay);
+  }
+  drawEcoOverlay();
+
   // SUONO DEL BATTITO
   document.getElementById('btnBattito').addEventListener('click', ()=>{
     playHeartbeat(4);
@@ -910,115 +910,132 @@ function initEcoIfNeeded(){
 }
 
 /* =========================================================
-   MODULO 3: RAGGI X — MENU, TRASCINAMENTO E SCATTO
+   MODULO 3: RAGGI X — camera + overlay scheletro trascinabile
    ========================================================= */
 let xrayStream = null;
 
-document.getElementById('btnStartCamera').addEventListener('click', async ()=>{
+// Scheletri generati come SVG inline (funzionano sempre, senza URL esterni).
+// Per usare le TUE immagini reali: sostituisci ogni valore di questa mappa
+// con il percorso del tuo file PNG trasparente, es. "immagini/scheletro_orso.png"
+const SKELETON_SVG = {
+  Orsacchiotto: skeletonBearSVG(),
+  Bambola: skeletonHumanSVG('#bfe9ff'),
+  Bambino: skeletonHumanSVG('#bfe9ff'),
+  Bambina: skeletonHumanSVG('#ffd0ea')
+};
+
+function skeletonHumanSVG(color){
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 400">
+    <g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round">
+      <circle cx="100" cy="45" r="32" fill="${color}" stroke="none" opacity="0.85"/>
+      <line x1="100" y1="77" x2="100" y2="100"/>
+      <line x1="60" y1="105" x2="140" y2="105"/>
+      <line x1="100" y1="100" x2="100" y2="230"/>
+      <line x1="70" y1="115" x2="130" y2="115"/>
+      <line x1="70" y1="135" x2="130" y2="135"/>
+      <line x1="72" y1="155" x2="128" y2="155"/>
+      <line x1="76" y1="175" x2="124" y2="175"/>
+      <line x1="60" y1="105" x2="35" y2="180"/>
+      <line x1="35" y1="180" x2="25" y2="250"/>
+      <line x1="140" y1="105" x2="165" y2="180"/>
+      <line x1="165" y1="180" x2="175" y2="250"/>
+      <line x1="100" y1="230" x2="65" y2="260"/>
+      <line x1="100" y1="230" x2="135" y2="260"/>
+      <line x1="65" y1="260" x2="55" y2="360"/>
+      <line x1="135" y1="260" x2="145" y2="360"/>
+      <line x1="55" y1="360" x2="40" y2="378"/>
+      <line x1="145" y1="360" x2="160" y2="378"/>
+    </g>
+  </svg>`);
+}
+function skeletonBearSVG(){
+  const color = '#bfe9ff';
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 360">
+    <g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round">
+      <circle cx="70" cy="30" r="14" fill="${color}" stroke="none" opacity="0.8"/>
+      <circle cx="130" cy="30" r="14" fill="${color}" stroke="none" opacity="0.8"/>
+      <circle cx="100" cy="55" r="34" fill="${color}" stroke="none" opacity="0.85"/>
+      <line x1="100" y1="89" x2="100" y2="105"/>
+      <ellipse cx="100" cy="170" rx="55" ry="65" fill="none"/>
+      <line x1="60" y1="115" x2="20" y2="170"/>
+      <line x1="20" y1="170" x2="15" y2="215"/>
+      <line x1="140" y1="115" x2="180" y2="170"/>
+      <line x1="180" y1="170" x2="185" y2="215"/>
+      <line x1="70" y1="230" x2="55" y2="300"/>
+      <line x1="130" y1="230" x2="145" y2="300"/>
+      <ellipse cx="52" cy="312" rx="16" ry="10" fill="${color}" stroke="none" opacity="0.8"/>
+      <ellipse cx="148" cy="312" rx="16" ry="10" fill="${color}" stroke="none" opacity="0.8"/>
+    </g>
+  </svg>`);
+}
+
+document.getElementById('btnStartCamera').addEventListener('click', startCamera);
+
+async function startCamera(){
   try{
-    // Accende la telecamera
     xrayStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
     const video = document.getElementById('xray-video');
     video.srcObject = xrayStream;
     video.classList.remove('hidden');
     document.getElementById('xrayPlaceholder').classList.add('hidden');
 
-    // Mostra il menu in alto e l'immagine
-    document.getElementById('xrayMenu').classList.remove('hidden');
-    document.getElementById('xrayMenu').style.display = 'flex';
-    
     const overlay = document.getElementById('xray-overlay');
-    // Carica la prima immagine dal menu a tendina
-    overlay.src = document.getElementById('xraySelect').value;
+    overlay.src = SKELETON_SVG[patient.tipo] || SKELETON_SVG.Bambino;
     overlay.classList.remove('hidden');
-    
-    // Centra l'immagine
-    const body = document.getElementById('xrayBody');
-    overlay.style.left = (body.clientWidth/2 - 170) + 'px';
-    overlay.style.top = (body.clientHeight/2 - 190) + 'px';
-
+    positionOverlayCenter();
+    document.getElementById('btnResetOverlay').classList.remove('hidden');
+    document.getElementById('xrayHint').classList.remove('hidden');
     examResults.xrayDone = true;
   }catch(err){
-    alert('Errore Fotocamera. Assicurati di usare HTTPS su Safari.');
+    alert('Non riesco ad accendere la telecamera. Controlla i permessi del browser (serve HTTPS).');
   }
-});
-
-// CAMBIO IMMAGINE QUANDO SI SCEGLIE DAL MENU
-document.getElementById('xraySelect').addEventListener('change', (e) => {
-  document.getElementById('xray-overlay').src = e.target.value;
-});
-
+}
 function stopCameraIfRunning(){
   if(xrayStream){
     xrayStream.getTracks().forEach(t=>t.stop());
     xrayStream = null;
-    document.getElementById('xray-video').classList.add('hidden'); 
-    document.getElementById('xray-video').srcObject = null;
+    const video = document.getElementById('xray-video');
+    video.classList.add('hidden'); video.srcObject = null;
     document.getElementById('xray-overlay').classList.add('hidden');
-    document.getElementById('xrayMenu').classList.add('hidden');
-    document.getElementById('xrayMenu').style.display = 'none';
     document.getElementById('xrayPlaceholder').classList.remove('hidden');
+    document.getElementById('btnResetOverlay').classList.add('hidden');
+    document.getElementById('xrayHint').classList.add('hidden');
   }
 }
+function positionOverlayCenter(){
+  const body = document.getElementById('xrayBody');
+  const overlay = document.getElementById('xray-overlay');
+  const bw = body.clientWidth, bh = body.clientHeight;
+  overlay.style.left = (bw/2 - 170) + 'px';
+  overlay.style.top = (bh/2 - 190) + 'px';
+}
+document.getElementById('btnResetOverlay').addEventListener('click', positionOverlayCenter);
 
-// DRAG & DROP (Trascinamento per touch e mouse)
+/* Drag con Pointer Events: copre sia touch (iPad) sia mouse */
 (function enableDrag(){
   const overlay = document.getElementById('xray-overlay');
   let dragging=false, offX=0, offY=0;
   overlay.addEventListener('pointerdown', (e)=>{
-    dragging = true; overlay.setPointerCapture(e.pointerId);
+    dragging = true;
+    overlay.setPointerCapture(e.pointerId);
     const rect = overlay.getBoundingClientRect();
+    const bodyRect = document.getElementById('xrayBody').getBoundingClientRect();
     offX = e.clientX - rect.left; offY = e.clientY - rect.top;
   });
   overlay.addEventListener('pointermove', (e)=>{
     if(!dragging) return;
     const bodyRect = document.getElementById('xrayBody').getBoundingClientRect();
-    overlay.style.left = (e.clientX - bodyRect.left - offX) + 'px';
-    overlay.style.top = (e.clientY - bodyRect.top - offY) + 'px';
+    let x = e.clientX - bodyRect.left - offX;
+    let y = e.clientY - bodyRect.top - offY;
+    overlay.style.left = x + 'px';
+    overlay.style.top = y + 'px';
   });
   ['pointerup','pointercancel'].forEach(ev=> overlay.addEventListener(ev, ()=> dragging=false));
 })();
 
-// SCATTA E SALVA LA RADIOGRAFIA
-document.getElementById('btnScattaRx').addEventListener('click', () => {
-  // Effetto flash
-  const flash = document.getElementById('flash-effect');
-  flash.style.opacity = '1';
-  setTimeout(() => flash.style.opacity = '0', 200);
-
-  // Suono fotocamera finto
-  beep(1200, 0, 0.1, 'square', 0.2);
-  setTimeout(() => beep(800, 0, 0.2, 'square', 0.2), 100);
-
-  // Creiamo un canvas invisibile per incollare fotocamera + immagine
-  const video = document.getElementById('xray-video');
-  const overlay = document.getElementById('xray-overlay');
-  const body = document.getElementById('xrayBody');
-  
-  const canvas = document.createElement('canvas');
-  canvas.width = body.clientWidth;
-  canvas.height = body.clientHeight;
-  const ctx = canvas.getContext('2d');
-
-  // 1. Disegna il video con i filtri Raggi X applicati!
-  ctx.filter = 'invert(1) grayscale(1) contrast(2.5) sepia(1) hue-rotate(130deg) saturate(3) brightness(0.8)';
-  // Calcolo per l'object-fit cover
-  const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
-  const x = (canvas.width / 2) - (video.videoWidth / 2) * scale;
-  const y = (canvas.height / 2) - (video.videoHeight / 2) * scale;
-  ctx.drawImage(video, x, y, video.videoWidth * scale, video.videoHeight * scale);
-
-  // 2. Disegna l'overlay dello scheletro sopra
-  ctx.filter = 'screen'; // L'effetto di fusione
-  ctx.drawImage(overlay, parseInt(overlay.style.left), parseInt(overlay.style.top), overlay.clientWidth, overlay.clientHeight);
-
-  // 3. Scarica l'immagine su iPad!
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-  const link = document.createElement('a');
-  link.download = 'Radiografia-' + patient.nome + '.jpg';
-  link.href = dataUrl;
-  link.click();
-});/* =========================================================
+/* =========================================================
    MODULO 4: REFERTO
    ========================================================= */
 const DIAGNOSI = [
