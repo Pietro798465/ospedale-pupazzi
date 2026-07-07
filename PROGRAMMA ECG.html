@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Ospedale dei Pupazzi - Simulatore Medico</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=VT323&display=swap');
+
+:root{
+  --bg:#050b06;
+  --panel:#0a170b;
+  --panel-2:#0d1f0e;
+  --green:#00ff6a;
+  --green-dim:#0f5a24;
+  --green-glow:rgba(0,255,106,.55);
+  --cyan:#2be7ff;
+  --red:#ff2b45;
+  --red-glow:rgba(255,43,69,.6);
+  --pink:#ff6fb0;
+  --blue:#4ea8ff;
+  --paper:#f3efe1;
+  --ink:#1c1a12;
+  --font-mono:'Roboto Mono',monospace;
+  --font-crt:'VT323',monospace;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--green);
+  font-family:var(--font-mono);overflow:hidden;overscroll-behavior:none;}
+
+#app{position:relative;width:100vw;height:100vh;height:100dvh;}
+
+/* faint CRT scanline atmosphere over everything */
+#app::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:repeating-linear-gradient(180deg,rgba(0,255,106,0.035) 0px,rgba(0,255,106,0.035) 1px,transparent 2px,transparent 3px);
+  mix-blend-mode:screen;
+}
+
+.screen{position:absolute;inset:0;display:none;flex-direction:column;}
+.screen.active{display:flex;}
+.hidden{display:none !important;}
+
+/* ---------- SCREEN 1: ACCETTAZIONE ---------- */
+#screen-accettazione{align-items:center;justify-content:center;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(0,255,106,0.08), transparent 60%),
+    var(--bg);
+  padding:20px;
+}
+.reg-card{
+  width:min(560px,92vw);
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:2px solid var(--green-dim);
+  border-radius:14px;
+  box-shadow:0 0 0 1px rgba(0,255,106,.15) inset, 0 0 40px var(--green-glow);
+  padding:28px 30px 24px;
+  position:relative;
+}
+.reg-card::before{
+  content:"◉ ADMISSIONS TERMINAL";
+  position:absolute;top:-13px;left:24px;background:var(--bg);
+  padding:0 10px;font-size:12px;letter-spacing:3px;color:var(--cyan);
+}
+.reg-title{font-family:var(--font-crt);font-size:38px;letter-spacing:2px;text-align:center;
+  color:var(--green);text-shadow:0 0 12px var(--green-glow);margin:6px 0 4px;}
+.reg-sub{text-align:center;color:var(--cyan);font-size:12px;letter-spacing:2px;margin-bottom:22px;opacity:.85;}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.field label{font-size:12px;letter-spacing:1.5px;color:var(--cyan);text-transform:uppercase;}
+.field input,.field select{
+  background:#031004;border:1px solid var(--green-dim);border-radius:6px;
+  color:var(--green);font-family:var(--font-mono);font-size:16px;padding:11px 12px;
+  outline:none;
+}
+.field input:focus,.field select:focus{border-color:var(--green);box-shadow:0 0 8px var(--green-glow);}
+.field select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--green) 50%),linear-gradient(135deg,var(--green) 50%,transparent 50%);
+  background-position:calc(100% - 18px) center,calc(100% - 13px) center;background-size:5px 5px,5px 5px;background-repeat:no-repeat;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.btn-start{
+  width:100%;margin-top:10px;padding:15px;border:none;border-radius:8px;
+  background:linear-gradient(180deg,#0fff7a,#00c85a);color:#00220f;font-weight:700;
+  font-size:17px;letter-spacing:2px;cursor:pointer;font-family:var(--font-mono);
+  box-shadow:0 0 20px var(--green-glow);
+}
+.btn-start:active{transform:translateY(1px);}
+
+/* ---------- SCREEN 2: DASHBOARD ---------- */
+#screen-dashboard{background:var(--bg);}
+.patient-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 22px;background:var(--panel);border-bottom:2px solid var(--green-dim);
+  font-size:13px;letter-spacing:1px;flex-shrink:0;
+}
+.patient-bar .grp{display:flex;gap:22px;align-items:center;flex-wrap:wrap;}
+.patient-bar .lab{color:var(--cyan);opacity:.8;margin-right:5px;}
+.patient-bar .val{color:var(--green);font-weight:700;}
+.pulse-strip{flex:1;height:22px;margin:0 20px;overflow:hidden;position:relative;}
+.pulse-strip svg{width:200%;height:100%;animation:pulseScroll 3.5s linear infinite;}
+@keyframes pulseScroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+#dashboard-main{flex:1;position:relative;overflow:hidden;}
+
+.exam-selector{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;
+  background:radial-gradient(ellipse at 50% 40%,rgba(0,255,106,.06),transparent 65%);
+}
+.exam-selector h2{font-family:var(--font-crt);font-size:26px;letter-spacing:4px;color:var(--cyan);margin:0 0 6px;}
+.exam-grid{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;padding:0 20px;}
+.exam-btn{
+  width:210px;height:170px;border-radius:16px;border:2px solid var(--green-dim);
+  background:linear-gradient(160deg,var(--panel-2),var(--panel));
+  color:var(--green);font-family:var(--font-mono);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  box-shadow:0 0 0 1px rgba(0,255,106,.12) inset,0 6px 0 rgba(0,0,0,.4),0 0 25px transparent;
+  transition:box-shadow .15s,transform .1s,border-color .15s;
+}
+.exam-btn .icon{font-size:44px;filter:drop-shadow(0 0 10px var(--green-glow));}
+.exam-btn .num{font-size:11px;letter-spacing:3px;color:var(--cyan);}
+.exam-btn .name{font-size:16px;font-weight:700;letter-spacing:1px;}
+.exam-btn:active{transform:translateY(4px);box-shadow:0 0 0 1px rgba(0,255,106,.12) inset,0 2px 0 rgba(0,0,0,.4),0 0 25px var(--green-glow);}
+.exam-btn:hover{border-color:var(--green);box-shadow:0 0 0 1px rgba(0,255,106,.2) inset,0 6px 0 rgba(0,0,0,.4),0 0 30px var(--green-glow);}
+
+.exam-panel{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);}
+.exam-topbar{
+  display:flex;align-items:center;justify-content:space-between;padding:10px 16px;
+  border-bottom:1px solid var(--green-dim);flex-shrink:0;
+}
+.exam-topbar h3{margin:0;font-family:var(--font-crt);font-size:22px;letter-spacing:2px;color:var(--green);}
+.btn-back{
+  background:transparent;border:1px solid var(--green-dim);color:var(--cyan);
+  padding:8px 16px;border-radius:6px;cursor:pointer;font-family:var(--font-mono);font-size:13px;letter-spacing:1px;
+}
+.btn-back:active{background:var(--green-dim);}
+
+.visit-footer{flex-shrink:0;padding:12px 20px;display:flex;justify-content:center;
+  border-top:2px solid var(--green-dim);background:var(--panel);}
+#btn-referto{
+  padding:16px 40px;border:none;border-radius:10px;
+  background:linear-gradient(180deg,#ff4a5e,#c8002a);color:#fff;
+  font-family:var(--font-mono);font-weight:700;font-size:16px;letter-spacing:2px;cursor:pointer;
+  box-shadow:0 0 26px var(--red-glow),0 4px 0 #7a0018;
+}
+#btn-referto:active{transform:translateY(3px);box-shadow:0 0 26px var(--red-glow),0 1px 0 #7a0018;}
+
+/* ---------- ECG MODULE ---------- */
+.ecg-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:8px 8px 0;}
+.ecg-grid{flex:1;position:relative;background:#020c02;border:1px solid var(--green-dim);min-height:0;overflow:hidden;}
+.ecg-grid canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+.ecg-controls{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+  padding:10px 6px;flex-shrink:0;
+}
+.ecg-controls .grp{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.ecg-controls button{
+  background:var(--panel-2);border:1px solid var(--green-dim);color:var(--green);
+  padding:8px 14px;border-radius:6px;cursor:pointer;font-family:var(--font-mono);font-size:12px;letter-spacing:1px;
+}
+.ecg-controls button.active{background:var(--green-dim);border-color:var(--green);box-shadow:0 0 10px var(--green-glow);}
+.ecg-controls button:disabled{opacity:.35;}
+.slider-group{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--green-dim);
+  padding:6px 10px;border-radius:6px;font-size:11px;color:var(--cyan);}
+.slider-group input[type=range]{width:70px;accent-color:var(--green);}
+.slider-group .cv{color:var(--green);font-weight:700;min-width:22px;text-align:right;}
+.hr-badge{font-size:14px;font-weight:700;color:var(--red);background:#1a0006;border:1px solid var(--red);
+  padding:5px 12px;border-radius:6px;box-shadow:0 0 10px var(--red-glow);}
+.status-msg{font-size:11px;color:var(--cyan);letter-spacing:1px;}
+
+/* ---------- ECOGRAFIA MODULE ---------- */
+.eco-body{flex:1;display:flex;gap:14px;padding:14px;min-height:0;}
+.eco-screen{
+  flex:1;position:relative;border:3px solid var(--green-dim);border-radius:10px;overflow:hidden;
+  background:#000;box-shadow:0 0 30px rgba(0,255,106,.15) inset;
+}
+#eco-canvas{width:100%;height:100%;display:block;}
+.eco-cone-label{position:absolute;top:10px;left:14px;font-size:12px;color:var(--green);letter-spacing:2px;opacity:.85;z-index:3;}
+.eco-result{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:rgba(0,10,3,.55);opacity:0;pointer-events:none;transition:opacity .4s;z-index:4;
+}
+.eco-result.show{opacity:1;}
+.eco-result .bow{font-size:90px;filter:drop-shadow(0 0 20px currentColor);}
+.eco-result .txt{font-family:var(--font-crt);font-size:30px;letter-spacing:3px;}
+.eco-side{width:220px;display:flex;flex-direction:column;gap:12px;flex-shrink:0;}
+.eco-side button{
+  background:var(--panel-2);border:1px solid var(--green-dim);color:var(--green);
+  padding:16px 10px;border-radius:10px;cursor:pointer;font-family:var(--font-mono);font-size:13px;letter-spacing:1px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+.eco-side button .ic{font-size:26px;}
+.eco-side button:active{background:var(--green-dim);box-shadow:0 0 14px var(--green-glow);}
+.eco-hint{font-size:11px;color:var(--cyan);opacity:.75;line-height:1.5;padding:6px 2px;}
+
+/* ---------- RAGGI X MODULE ---------- */
+.xray-body{flex:1;position:relative;overflow:hidden;background:#000;}
+#xray-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:grayscale(1) contrast(1.25) brightness(.9);}
+#xray-video.mirror{transform:scaleX(-1);}
+.xray-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;color:var(--cyan);text-align:center;padding:30px;}
+.xray-placeholder button{
+  background:var(--green-dim);border:1px solid var(--green);color:var(--green);padding:12px 22px;
+  border-radius:8px;cursor:pointer;font-family:var(--font-mono);letter-spacing:1px;
+}
+#xray-overlay{position:absolute;width:340px;touch-action:none;opacity:.92;filter:drop-shadow(0 0 6px rgba(120,200,255,.6));cursor:grab;}
+#xray-overlay:active{cursor:grabbing;}
+.xray-hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:12px;color:var(--cyan);
+  letter-spacing:1px;opacity:.8;pointer-events:none;text-shadow:0 0 6px #000;}
+.xray-reset{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.5);border:1px solid var(--green-dim);
+  color:var(--green);padding:8px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font-mono);}
+
+/* ---------- REFERTO ---------- */
+#referto-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.referto-paper{
+  width:min(620px,94vw);max-height:90vh;overflow:auto;background:var(--paper);color:var(--ink);
+  border-radius:4px;padding:34px 36px;box-shadow:0 20px 60px rgba(0,0,0,.6);
+  font-family:var(--font-mono);position:relative;
+  background-image:repeating-linear-gradient(rgba(0,0,0,0.025) 0 1px, transparent 1px 28px);
+}
+.referto-paper h2{text-align:center;margin:0 0 4px;font-size:22px;letter-spacing:3px;}
+.referto-paper .stamp{position:absolute;top:26px;right:30px;border:3px solid #c8002a;color:#c8002a;
+  padding:6px 10px;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:2px;transform:rotate(8deg);opacity:.85;}
+.referto-sub{text-align:center;font-size:12px;color:#555;margin-bottom:20px;letter-spacing:1px;}
+.referto-line{margin:10px 0;font-size:14px;line-height:1.5;}
+.referto-line b{display:block;font-size:11px;letter-spacing:2px;color:#777;margin-bottom:3px;text-transform:uppercase;}
+.referto-list{margin:4px 0 0;padding-left:18px;}
+.referto-list li{margin:3px 0;font-size:14px;}
+.referto-sign{margin-top:26px;text-align:right;font-size:13px;font-style:italic;color:#444;}
+.referto-actions{display:flex;gap:12px;justify-content:center;margin-top:24px;}
+.referto-actions button{
+  padding:12px 22px;border-radius:8px;border:none;cursor:pointer;font-family:var(--font-mono);
+  font-size:13px;letter-spacing:1px;font-weight:700;
+}
+.btn-nuova{background:#00c85a;color:#00220f;}
+.btn-chiudi{background:#ddd;color:#222;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ SCREEN 1: ACCETTAZIONE ============ -->
+  <div id="screen-accettazione" class="screen active">
+    <div class="reg-card">
+      <div class="reg-title">OSPEDALE DEI PUPAZZI</div>
+      <div class="reg-sub">SCHEDA DI ACCETTAZIONE PAZIENTE</div>
+
+      <div class="row2">
+        <div class="field">
+          <label>Nome</label>
+          <input type="text" id="in-nome" placeholder="es. Luca">
+        </div>
+        <div class="field">
+          <label>Cognome</label>
+          <input type="text" id="in-cognome" placeholder="es. Rossi">
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>Data di nascita</label>
+          <input type="date" id="in-dob">
+        </div>
+        <div class="field">
+          <label>Sesso</label>
+          <select id="in-sesso">
+            <option value="">Seleziona</option>
+            <option value="Maschio">Maschio</option>
+            <option value="Femmina">Femmina</option>
+            <option value="Altro">Altro</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Tipo di paziente</label>
+        <select id="in-tipo">
+          <option value="">Seleziona</option>
+          <option value="Bambola">🪆 Bambola</option>
+          <option value="Orsacchiotto">🧸 Orsacchiotto</option>
+          <option value="Bambino">👦 Bambino</option>
+          <option value="Bambina">👧 Bambina</option>
+        </select>
+      </div>
+
+      <button class="btn-start" id="btn-avvia-visita">▶ AVVIA VISITA</button>
+    </div>
+  </div>
+
+  <!-- ============ SCREEN 2: DASHBOARD ============ -->
+  <div id="screen-dashboard" class="screen">
+    <div class="patient-bar">
+      <div class="grp">
+        <div><span class="lab">PAZIENTE</span><span class="val" id="bar-nome">-</span></div>
+        <div><span class="lab">ETÀ</span><span class="val" id="bar-eta">-</span></div>
+        <div><span class="lab">TIPO</span><span class="val" id="bar-tipo">-</span></div>
+      </div>
+      <div class="pulse-strip">
+        <svg viewBox="0 0 400 40" preserveAspectRatio="none">
+          <polyline points="0,20 30,20 40,20 48,6 56,34 64,20 90,20 120,20 130,20 138,6 146,34 154,20 180,20
+            200,20 230,20 240,20 248,6 256,34 264,20 290,20 320,20 330,20 338,6 346,34 354,20 380,20 400,20"
+            fill="none" stroke="#00ff6a" stroke-width="2" style="filter:drop-shadow(0 0 4px #00ff6a)"/>
+        </svg>
+      </div>
+      <div class="grp">
+        <div><span class="lab">ID VISITA</span><span class="val" id="bar-id">-</span></div>
+      </div>
+    </div>
+
+    <div id="dashboard-main">
+      <!-- Selettore esami -->
+      <div class="exam-selector" id="exam-selector">
+        <h2>SELEZIONA ESAME</h2>
+        <div class="exam-grid">
+          <button class="exam-btn" data-exam="ecg">
+            <div class="icon">📈</div>
+            <div class="num">01</div>
+            <div class="name">ECG</div>
+          </button>
+          <button class="exam-btn" data-exam="eco">
+            <div class="icon">🔊</div>
+            <div class="num">02</div>
+            <div class="name">ECOGRAFIA</div>
+          </button>
+          <button class="exam-btn" data-exam="xray">
+            <div class="icon">🦴</div>
+            <div class="num">03</div>
+            <div class="name">RAGGI X</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Pannello ECG -->
+      <div class="exam-panel hidden" id="exam-ecg">
+        <div class="exam-topbar">
+          <h3>MODULO 1 · ELETTROCARDIOGRAMMA</h3>
+          <button class="btn-back" data-back>◀ TORNA ALLA DASHBOARD</button>
+        </div>
+        <div class="ecg-wrap">
+          <div class="ecg-grid" id="ecgGrid"></div>
+          <div class="ecg-controls">
+            <div class="grp">
+              <button id="ecgStart">START</button>
+              <button id="ecgStop" disabled>STOP</button>
+              <span class="hr-badge">HR <span id="hrTop">70</span> BPM</span>
+              <span class="status-msg" id="ecgStatus">PRONTO</span>
+            </div>
+            <div class="grp">
+              <div class="slider-group">BPM
+                <input type="range" id="bpmSlider" min="30" max="200" value="70">
+                <span class="cv" id="bpmVal">70</span>
+              </div>
+              <div class="slider-group">GAIN
+                <input type="range" id="gainSlider" min="5" max="20" value="10">
+                <span class="cv" id="gainVal">10</span>
+              </div>
+              <button id="condNormal" class="active">Normal</button>
+              <button id="condTachy">Tachy</button>
+              <button id="condBrady">Brady</button>
+              <button id="condAfib">A-Fib</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pannello Ecografia -->
+      <div class="exam-panel hidden" id="exam-eco">
+        <div class="exam-topbar">
+          <h3>MODULO 2 · ECOGRAFIA</h3>
+          <button class="btn-back" data-back>◀ TORNA ALLA DASHBOARD</button>
+        </div>
+        <div class="eco-body">
+<div class="eco-screen">
+            <div class="eco-cone-label">US · 4.5 MHz · B-MODE</div>
+            <!-- Questo è il player video che mostrerà le tue ecografie reali -->
+            <video id="eco-video" autoplay loop muted playsinline style="position:absolute; width:100%; height:100%; object-fit:cover; filter: grayscale(100%) contrast(1.2) brightness(0.8);"></video>
+            <!-- Il canvas serve solo per metterci sopra le linee verdi finte -->
+            <canvas id="eco-canvas" style="position:absolute; pointer-events:none; z-index:2;"></canvas>
+            <div class="eco-result" id="ecoResult">
+              <div class="bow" id="ecoBowIcon">🎀</div>
+              <div class="txt" id="ecoResultTxt">È UNA...</div>
+            </div>
+          </div>
+          <div class="eco-side">
+            <button id="btnBattito"><span class="ic">💓</span>SENTI BATTITO</button>
+            <button id="btnSesso"><span class="ic">🎀</span>SCOPRI SESSO</button>
+            <div class="eco-hint">Appoggia la sonda sul pupazzo e premi i pulsanti per ascoltare il cuoricino e scoprire una sorpresa!</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pannello Raggi X -->
+      <div class="exam-panel hidden" id="exam-xray">
+        <div class="exam-topbar">
+          <h3>MODULO 3 · RAGGI X</h3>
+          <button class="btn-back" data-back>◀ TORNA ALLA DASHBOARD</button>
+        </div>
+        <div class="xray-body" id="xrayBody">
+          <div class="xray-placeholder" id="xrayPlaceholder">
+            <div style="font-size:46px;">📷</div>
+            <div>Accendi la telecamera per inquadrare il pupazzo</div>
+            <button id="btnStartCamera">ACCENDI TELECAMERA</button>
+          </div>
+          <video id="xray-video" class="hidden" autoplay playsinline muted></video>
+          <img id="xray-overlay" class="hidden" draggable="false">
+          <button class="xray-reset hidden" id="btnResetOverlay">RIALLINEA</button>
+          <div class="xray-hint hidden" id="xrayHint">Trascina lo scheletro per allinearlo al pupazzo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="visit-footer">
+      <button id="btn-referto">🖨 TERMINA VISITA E STAMPA REFERTO</button>
+    </div>
+  </div>
+
+  <!-- ============ REFERTO OVERLAY ============ -->
+  <div id="referto-overlay" class="hidden">
+    <div class="referto-paper">
+      <div class="stamp">VISITATO</div>
+      <h2>REFERTO UFFICIALE</h2>
+      <div class="referto-sub">Ospedale dei Pupazzi &middot; Reparto Coccole &amp; Guarigioni</div>
+
+      <div class="referto-line"><b>Paziente</b><span id="ref-paziente"></span></div>
+      <div class="referto-line"><b>Tipo paziente</b><span id="ref-tipo"></span></div>
+      <div class="referto-line"><b>Data visita</b><span id="ref-data"></span></div>
+
+      <div class="referto-line"><b>Esami eseguiti</b>
+        <ul class="referto-list" id="ref-esami"></ul>
+      </div>
+
+      <div class="referto-line"><b>Diagnosi</b><span id="ref-diagnosi"></span></div>
+
+      <div class="referto-line"><b>Terapia prescritta</b>
+        <ul class="referto-list" id="ref-terapie"></ul>
+      </div>
+
+      <div class="referto-sign">Dott. / Dott.ssa <span id="ref-medico">___________</span></div>
+
+      <div class="referto-actions">
+        <button class="btn-nuova" id="btnNuovaVisita">NUOVA VISITA</button>
+        <button class="btn-chiudi" id="btnChiudiReferto">CHIUDI</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================
+   STATO GLOBALE PAZIENTE
+   ========================================================= */
+const patient = { nome:'', cognome:'', dob:'', sesso:'', tipo:'', eta:'-', visitId:'' };
+
+// Risultati raccolti durante gli esami, usati per compilare il referto finale
+const examResults = { ecgDone:false, ecgBPM:null, ecgCondition:null, ecoDone:false, ecoSex:null, xrayDone:false };
+
+function calcAge(dobStr){
+  if(!dobStr) return '-';
+  const t = new Date(), b = new Date(dobStr);
+  let a = t.getFullYear()-b.getFullYear();
+  const m = t.getMonth()-b.getMonth();
+  if(m<0 || (m===0 && t.getDate()<b.getDate())) a--;
+  return isNaN(a) ? '-' : a;
+}
+
+document.getElementById('btn-avvia-visita').addEventListener('click', ()=>{
+  const nome = document.getElementById('in-nome').value.trim();
+  const cognome = document.getElementById('in-cognome').value.trim();
+  const dob = document.getElementById('in-dob').value;
+  const sesso = document.getElementById('in-sesso').value;
+  const tipo = document.getElementById('in-tipo').value;
+
+  if(!nome || !cognome || !dob || !sesso || !tipo){
+    alert('Compila tutti i campi prima di avviare la visita!');
+    return;
+  }
+  patient.nome = nome; patient.cognome = cognome; patient.dob = dob;
+  patient.sesso = sesso; patient.tipo = tipo;
+  patient.eta = calcAge(dob);
+  patient.visitId = 'V-' + Math.floor(1000+Math.random()*9000);
+
+  document.getElementById('bar-nome').textContent = nome + ' ' + cognome;
+  document.getElementById('bar-eta').textContent = patient.eta + ' anni';
+  document.getElementById('bar-tipo').textContent = tipo;
+  document.getElementById('bar-id').textContent = patient.visitId;
+
+  showScreen('screen-dashboard');
+});
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+/* =========================================================
+   NAVIGAZIONE TRA ESAMI
+   ========================================================= */
+const examSelector = document.getElementById('exam-selector');
+const examPanels = { ecg: document.getElementById('exam-ecg'), eco: document.getElementById('exam-eco'), xray: document.getElementById('exam-xray') };
+
+const examsVisited = { ecg:false, eco:false, xray:false };
+
+document.querySelectorAll('.exam-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const exam = btn.dataset.exam;
+    examSelector.classList.add('hidden');
+    examPanels[exam].classList.remove('hidden');
+    examsVisited[exam] = true;
+    // Il pannello passa da display:none a visibile proprio ora: aspettiamo
+    // il prossimo frame (e i font) prima di inizializzare/ridimensionare i
+    // grafici, altrimenti Chart.js li misura a dimensione zero e il
+    // tracciato resta invisibile pur essendo "attivo".
+    // FIX PER IPAD: Aspettiamo 150ms per assicurarci che lo schermo sia visibile
+    setTimeout(()=>{
+      if(exam==='ecg'){
+        initEcgIfNeeded();
+        ecgResizeCanvases(); // Forza il ricalcolo delle dimensioni per iPad
+        if(!ecgRAF) ecgStart();
+      }
+      if(exam==='eco') initEcoIfNeeded();
+    }, 150);
+  });
+});
+
+document.querySelectorAll('[data-back]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    Object.values(examPanels).forEach(p=>p.classList.add('hidden'));
+    examSelector.classList.remove('hidden');
+    stopCameraIfRunning();
+  });
+});
+
+/* =========================================================
+   AUDIO SINTETIZZATO (nessuna dipendenza da file esterni)
+   ========================================================= */
+let audioCtx = null;
+function getAudioCtx(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function beep(freq, start, dur, type='sine', gainPeak=0.35){
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type; osc.frequency.value = freq;
+  osc.connect(gain); gain.connect(ctx.destination);
+  const t0 = ctx.currentTime + start;
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(gainPeak, t0 + dur*0.15);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  osc.start(t0); osc.stop(t0 + dur + 0.02);
+}
+function playHeartbeat(loops=4){
+  const ctx = getAudioCtx();
+  for(let i=0;i<loops;i++){
+    const base = i*0.85;
+    beep(60, base, 0.16, 'sine', 0.5);      // "lub"
+    beep(45, base+0.22, 0.14, 'sine', 0.35); // "dub"
+  }
+}
+function playPartyChime(){
+  const notes = [523.25,659.25,783.99,1046.5];
+  notes.forEach((f,i)=> beep(f, i*0.12, 0.35, 'triangle', 0.3));
+}
+
+/* =========================================================
+   MODULO 1: ECG — motore matematico originale (invariato),
+   ma il disegno ora usa due <canvas> semplici invece di 12
+   istanze Chart.js: una griglia statica sotto (disegnata una
+   volta sola) e un livello trasparente sopra su cui viene
+   tracciata la linea a scorrimento continuo, cancellando solo
+   la strisciolina davanti alla "penna". Questo è molto più
+   leggero per un iPad (prima si rifaceva l'intero grafico 50
+   volte al secondo per 12 grafici, che può mandare in crisi
+   Safari) e fa scorrere il tracciato su TUTTE le derivazioni
+   in modo continuo, come su un vero monitor da ospedale.
+   ========================================================= */
+const LEAD_NAMES = ["I","V1","II","V2","III","V3","aVR","V4","aVL","V5","aVF","V6"];
+let ecgBPM = 70, ecgGain = 10, ecgCondition = 'normal', ecgTime = 0, ecgInitDone = false;
+let ecgRAF = null, ecgLastTs = null, ecgAcc = 0;
+const ECG_UPDATE_MS = 33; // ~30 aggiornamenti al secondo: fluido ma leggero su iPad
+
+function generateECGPoint(t_phase, leadName, condition){
+  let value = 0;
+  let base_p=0.08, base_q=0.05, base_r=1.0, base_s=0.2, base_t=0.15;
+  let p_dur=0.08, pr_seg=0.08, qrs_dur=0.12, st_seg=0.08, t_dur=0.18, baseline=0;
+
+  const LF = {
+    "I":{p:0.8,q:0.8,r:0.8,s:0.6,t:0.7,inv:false,qP:true,sP:true},
+    "II":{p:1.0,q:1.0,r:1.1,s:0.8,t:1.0,inv:false,qP:true,sP:true},
+    "III":{p:0.6,q:0.7,r:0.5,s:1.0,t:0.4,inv:false,qP:true,sP:true},
+    "aVR":{p:0.9,q:1.1,r:0.5,s:0.4,t:0.7,inv:true,qP:true,sP:true},
+    "aVL":{p:0.7,q:0.9,r:0.7,s:0.7,t:0.6,inv:false,qP:true,sP:true},
+    "aVF":{p:0.9,q:1.0,r:0.9,s:0.7,t:0.8,inv:false,qP:true,sP:true},
+    "V1":{p:0.4,q:0.0,r:0.4,s:1.5,t:0.3,inv:false,qP:false,sP:true,tInv:true},
+    "V2":{p:0.6,q:0.0,r:0.7,s:1.2,t:0.5,inv:false,qP:false,sP:true},
+    "V3":{p:0.7,q:0.0,r:1.0,s:0.9,t:0.6,inv:false,qP:false,sP:true},
+    "V4":{p:0.8,q:0.0,r:1.2,s:0.7,t:0.8,inv:false,qP:false,sP:true},
+    "V5":{p:0.9,q:0.0,r:1.1,s:0.3,t:0.9,inv:false,qP:false,sP:true},
+    "V6":{p:0.9,q:0.0,r:1.0,s:0.2,t:0.9,inv:false,qP:false,sP:true}
+  }[leadName];
+
+  let p_amp=base_p*LF.p, q_dep=base_q*LF.q, r_amp=base_r*LF.r, s_dep=base_s*LF.s, t_amp=base_t*LF.t;
+  if(LF.inv){ p_amp*=-1; t_amp*=-1; }
+  if(LF.tInv && !LF.inv){ t_amp*=-1; }
+
+  if(condition==='tachycardia'){ r_amp*=0.8; p_amp*=0.8; t_amp*=0.8; qrs_dur=0.09; pr_seg=0.06; t_dur=0.15; baseline+=0.02; }
+  else if(condition==='bradycardia'){ r_amp*=1.1; p_amp*=1.1; t_amp*=1.1; qrs_dur=0.13; pr_seg=0.10; t_dur=0.22; baseline-=0.01; }
+  else if(condition==='afib'){
+    p_amp=0; r_amp*=(0.7+Math.random()*0.6); s_dep*=(0.7+Math.random()*0.6);
+    qrs_dur=0.10+Math.random()*0.03; pr_seg=0; t_amp*=(0.6+Math.random()*0.8);
+    baseline += 0.03*Math.sin(ecgTime*10+Math.random()*Math.PI*2);
+  }
+
+  const p_start=0, p_end=p_start+p_dur, q_start=p_end+pr_seg;
+  const r_peak=qrs_dur*0.35, s_peak=qrs_dur*0.7, qrs_end=q_start+qrs_dur;
+  const st_end=qrs_end+st_seg, t_start=st_end, t_peak=t_dur*0.4, t_end=t_start+t_dur;
+
+  if(t_phase>=p_start && t_phase<p_end){
+    const tl=t_phase-p_start;
+    value += p_amp*Math.exp(-Math.pow((tl-p_dur/2)/(p_dur/4),2));
+  } else if(t_phase>=q_start && t_phase<qrs_end){
+    const tl=t_phase-q_start; let qrsv=0;
+    if(LF.qP && tl<r_peak && q_dep>0.01){ const seg=r_peak; if(seg>0) qrsv -= q_dep*Math.sin(Math.PI*tl/seg); }
+    if(r_amp>0.01){
+      const rs = (LF.qP && q_dep>0.01) ? r_peak*0.5 : 0, re = s_peak;
+      if(tl>=rs && tl<re){
+        const rl=tl-rs, rt=re-rs, rise=rt*0.4, fall=rt*0.6;
+        if(rl<rise) qrsv += r_amp*(rl/rise); else if(rl<rt) qrsv += r_amp*(1-(rl-rise)/fall);
+      }
+    }
+    if(LF.sP && s_dep>0.01){
+      const ss=s_peak, se=qrs_dur;
+      if(tl>=ss && tl<se){ const sl=tl-ss, st=se-ss; if(st>0) qrsv -= s_dep*Math.pow(Math.sin(Math.PI*sl/st),1.5); }
+    }
+    value += qrsv;
+  } else if(t_phase>=qrs_end && t_phase<st_end){
+    value += baseline;
+  } else if(t_phase>=t_start && t_phase<t_end){
+    const tl=t_phase-t_start;
+    if(tl<t_peak) value += t_amp*Math.pow(tl/t_peak,1.5);
+    else value += t_amp*Math.pow((t_dur-tl)/(t_dur-t_peak),0.8);
+  }
+  value += baseline;
+  if(LF.inv) value*=-1;
+  return value;
+}
+
+let ecgBgCanvas, ecgFgCanvas, ecgBgCtx, ecgFgCtx;
+let ecgCellRects = []; // {x,y,w,h,name} per ognuna delle 12 derivazioni
+let ecgSweepX = [];    // posizione della "penna" per ogni derivazione
+let ecgLastY = [];     // ultima Y disegnata (null = non collegare la linea)
+
+function ecgLayoutCells(){
+  const w = ecgBgCanvas.width, h = ecgBgCanvas.height;
+  const cols = 2, rows = 6;
+  const cw = w/cols, ch = h/rows;
+  ecgCellRects = LEAD_NAMES.map((name,i)=>{
+    const col = i%2, row = Math.floor(i/2);
+    return { x: col*cw, y: row*ch, w: cw, h: ch, name };
+  });
+}
+
+function ecgDrawGrid(){
+  const ctx = ecgBgCtx, w = ecgBgCanvas.width, h = ecgBgCanvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#020c02';
+  ctx.fillRect(0,0,w,h);
+  ecgCellRects.forEach(cell=>{
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cell.x, cell.y, cell.w, cell.h);
+    ctx.clip();
+    const step = 8;
+    for(let x=0; x<=cell.w; x+=step){
+      const major = Math.round(x/step)%5===0;
+      ctx.strokeStyle = major ? 'rgba(15,90,36,0.9)' : 'rgba(15,90,36,0.4)';
+      ctx.lineWidth = major ? 1 : 0.5;
+      ctx.beginPath(); ctx.moveTo(cell.x+x, cell.y); ctx.lineTo(cell.x+x, cell.y+cell.h); ctx.stroke();
+    }
+    for(let y=0; y<=cell.h; y+=step){
+      const major = Math.round(y/step)%5===0;
+      ctx.strokeStyle = major ? 'rgba(15,90,36,0.9)' : 'rgba(15,90,36,0.4)';
+      ctx.lineWidth = major ? 1 : 0.5;
+      ctx.beginPath(); ctx.moveTo(cell.x, cell.y+y); ctx.lineTo(cell.x+cell.w, cell.y+y); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(15,90,36,0.9)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cell.x+0.5, cell.y+0.5, cell.w-1, cell.h-1);
+    ctx.fillStyle = '#2be7ff';
+    ctx.font = '11px Roboto Mono, monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillText(cell.name, cell.x+6, cell.y+4);
+  });
+}
+
+function ecgResizeCanvases(){
+  if(!ecgBgCanvas) return;
+  const parent = ecgBgCanvas.parentElement;
+  const w = Math.max(parent.clientWidth, 1), h = Math.max(parent.clientHeight, 1);
+  [ecgBgCanvas, ecgFgCanvas].forEach(c=>{ c.width = w; c.height = h; });
+  ecgLayoutCells();
+  ecgDrawGrid();
+  ecgFgCtx.clearRect(0,0,w,h);
+  ecgSweepX = LEAD_NAMES.map(()=>0);
+  ecgLastY = LEAD_NAMES.map(()=>null);
+}
+
+function initEcgIfNeeded(){
+  if(ecgInitDone) return;
+  ecgInitDone = true;
+  const wrap = document.getElementById('ecgGrid');
+  wrap.innerHTML = '<canvas id="ecgBg"></canvas><canvas id="ecgFg"></canvas>';
+  ecgBgCanvas = document.getElementById('ecgBg');
+  ecgFgCanvas = document.getElementById('ecgFg');
+  ecgBgCtx = ecgBgCanvas.getContext('2d');
+  ecgFgCtx = ecgFgCanvas.getContext('2d');
+  ecgResizeCanvases();
+  window.addEventListener('resize', ecgResizeCanvases);
+
+  document.getElementById('ecgStart').addEventListener('click', ecgStart);
+  document.getElementById('ecgStop').addEventListener('click', ecgStop);
+  document.getElementById('bpmSlider').addEventListener('input', e=> ecgSetBPM(+e.target.value));
+  document.getElementById('gainSlider').addEventListener('input', e=> ecgSetGain(+e.target.value));
+  document.getElementById('condNormal').addEventListener('click', ()=>ecgSetCondition('normal'));
+  document.getElementById('condTachy').addEventListener('click', ()=>ecgSetCondition('tachycardia'));
+  document.getElementById('condBrady').addEventListener('click', ()=>ecgSetCondition('bradycardia'));
+  document.getElementById('condAfib').addEventListener('click', ()=>ecgSetCondition('afib'));
+
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(()=> ecgResizeCanvases());
+  }
+  ecgStart();
+}
+
+function ecgTick(){
+  ecgTime += ECG_UPDATE_MS/1000;
+  let cycle = 60/ecgBPM;
+  if(ecgCondition==='afib') cycle *= (0.8+Math.random()*0.4);
+  const tInCycle = (ecgTime % cycle)/cycle;
+  const ampScale = 1.6 * (ecgGain/10);
+
+  ecgCellRects.forEach((cell, i)=>{
+    const name = cell.name;
+    let raw = generateECGPoint(tInCycle, name, ecgCondition);
+    let val = raw*(ecgGain/10) + (Math.random()-0.5)*0.02*(ecgGain/10);
+
+    const stepPx = cell.w / (4000/ECG_UPDATE_MS); // sweep completo ~4 secondi
+    const eraseAhead = Math.max(6, stepPx*4);
+
+    let sx = ecgSweepX[i];
+    // ripulisce una piccola striscia davanti alla "penna": rivela la griglia
+    // sottostante e crea il classico effetto "cancellazione" dei monitor veri
+    ecgFgCtx.clearRect(cell.x + sx, cell.y, Math.min(eraseAhead, cell.w-sx), cell.h);
+
+    const y = cell.y + cell.h/2 - val*ampScale*(cell.h/2/2);
+    const x = cell.x + sx;
+
+    if(ecgLastY[i] !== null && sx > 0){
+      ecgFgCtx.strokeStyle = '#00ff6a';
+      ecgFgCtx.lineWidth = 1.6;
+      ecgFgCtx.shadowColor = 'rgba(0,255,106,0.6)';
+      ecgFgCtx.shadowBlur = 3;
+      ecgFgCtx.beginPath();
+      ecgFgCtx.moveTo(x - stepPx, ecgLastY[i]);
+      ecgFgCtx.lineTo(x, y);
+      ecgFgCtx.stroke();
+      ecgFgCtx.shadowBlur = 0;
+    }
+    ecgLastY[i] = y;
+
+    sx += stepPx;
+    if(sx >= cell.w){ sx = 0; ecgLastY[i] = null; }
+    ecgSweepX[i] = sx;
+  });
+
+  document.getElementById('hrTop').textContent = ecgBPM;
+}
+
+function ecgLoop(ts){
+  if(ecgLastTs === null) ecgLastTs = ts;
+  ecgAcc += ts - ecgLastTs;
+  ecgLastTs = ts;
+  // Se il dispositivo rallenta, non accumuliamo un debito infinito di tick
+  if(ecgAcc > ECG_UPDATE_MS*5) ecgAcc = ECG_UPDATE_MS*5;
+  while(ecgAcc >= ECG_UPDATE_MS){
+    ecgTick();
+    ecgAcc -= ECG_UPDATE_MS;
+  }
+  ecgRAF = requestAnimationFrame(ecgLoop);
+}
+
+function ecgStart(){
+  if(ecgRAF) return;
+  ecgLastTs = null; ecgAcc = 0;
+  ecgRAF = requestAnimationFrame(ecgLoop);
+  document.getElementById('ecgStart').disabled = true;
+  document.getElementById('ecgStop').disabled = false;
+  document.getElementById('ecgStatus').textContent = 'TRACCIATO ATTIVO';
+  examResults.ecgDone = true;
+  examResults.ecgBPM = ecgBPM;
+  examResults.ecgCondition = ecgCondition;
+}
+function ecgStop(){
+  if(ecgRAF){ cancelAnimationFrame(ecgRAF); ecgRAF = null; }
+  document.getElementById('ecgStart').disabled = false;
+  document.getElementById('ecgStop').disabled = true;
+  document.getElementById('ecgStatus').textContent = 'FERMO';
+}
+function ecgSetBPM(v){ ecgBPM=v; document.getElementById('bpmVal').textContent=v; if(examResults.ecgDone) examResults.ecgBPM=v; }
+function ecgSetGain(v){ ecgGain=v; document.getElementById('gainVal').textContent=v; }
+function ecgSetCondition(c){
+  ecgCondition=c;
+  document.querySelectorAll('.ecg-controls .grp:last-child button').forEach(b=>b.classList.remove('active'));
+  document.getElementById({normal:'condNormal',tachycardia:'condTachy',bradycardia:'condBrady',afib:'condAfib'}[c]).classList.add('active');
+  ecgSetBPM({normal:70,tachycardia:130,bradycardia:50,afib:100}[c]);
+  document.getElementById('bpmSlider').value = ecgBPM;
+  if(examResults.ecgDone) examResults.ecgCondition = ecgCondition;
+}
+
+/* =========================================================
+   MODULO 2: ECOGRAFIA (CON VIDEO/IMMAGINI REALI)
+   ========================================================= */
+// QUI INSERIRAI I NOMI DEI TUOI FILE VIDEO (es. mp4) o IMMAGINI (es. jpg)
+// I file dovranno essere messi nella stessa cartella su GitHub!
+const FILE_ECOGRAFIE = {
+  'Orsacchiotto': 'eco-orso.mp4',
+  'Bambola': 'eco-bambola.mp4',
+  'Bambino': 'eco-bambino.mp4',
+  'Bambina': 'eco-bambina.mp4'
+};
+
+let ecoInitDone = false, ecoRAF = null;
+
+function initEcoIfNeeded(){
+  examResults.ecoDone = true;
+  if(ecoInitDone) return;
+  ecoInitDone = true;
+
+  const canvas = document.getElementById('eco-canvas');
+  const ctx = canvas.getContext('2d');
+  const videoEl = document.getElementById('eco-video');
+  
+  // Carica il video in base al paziente (se non lo trova prova a caricare eco-bambino.mp4)
+  videoEl.src = FILE_ECOGRAFIE[patient.tipo] || 'eco-bambino.mp4';
+  videoEl.play();
+
+  function resize(){ canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; }
+  resize(); window.addEventListener('resize', resize);
+
+  let sweepX = 0;
+  function drawEcoOverlay(){
+    const w=canvas.width, h=canvas.height;
+    if(w===0 || h===0){ ecoRAF = requestAnimationFrame(drawEcoOverlay); return; }
+    ctx.clearRect(0,0,w,h);
+    
+    // Disegna il cono nero per simulare la forma dell'ecografia
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.moveTo(0,0); ctx.lineTo(w,0); ctx.lineTo(w,h); ctx.lineTo(0,h);
+    ctx.lineTo(w*0.15, h); ctx.lineTo(w*0.5, 0); ctx.lineTo(w*0.85, h); ctx.lineTo(w,h);
+    ctx.fill();
+
+    // Effetto grana verde leggerissimo sopra il video
+    ctx.fillStyle = 'rgba(0, 255, 106, 0.03)';
+    for(let i=0; i<150; i++) ctx.fillRect(Math.random()*w, Math.random()*h, 2, 2);
+
+    // Linea verde di scansione
+    sweepX = (sweepX+3)%w;
+    const grad = ctx.createLinearGradient(sweepX-40,0,sweepX,0);
+    grad.addColorStop(0,'rgba(0,255,106,0)'); grad.addColorStop(1,'rgba(0,255,106,0.35)');
+    ctx.fillStyle = grad; ctx.fillRect(sweepX-40,0,40,h);
+    
+    ecoRAF = requestAnimationFrame(drawEcoOverlay);
+  }
+  drawEcoOverlay();
+
+  // SUONO DEL BATTITO
+  document.getElementById('btnBattito').addEventListener('click', ()=>{
+    playHeartbeat(4);
+    const container = document.querySelector('.eco-screen');
+    container.style.transition='transform .1s';
+    let n=0; const pulse=setInterval(()=>{ container.style.transform = n%2===0?'scale(1.015)':'scale(1)'; n++; if(n>7) { clearInterval(pulse); container.style.transform='scale(1)'; } }, 220);
+  });
+
+  // SCOPRI SESSO
+  document.getElementById('btnSesso').addEventListener('click', ()=>{
+    const isM = Math.random() < 0.5;
+    examResults.ecoSex = isM ? 'Maschio' : 'Femmina';
+    const result = document.getElementById('ecoResult');
+    const icon = document.getElementById('ecoBowIcon');
+    const txt = document.getElementById('ecoResultTxt');
+    icon.textContent = '🎀';
+    icon.style.color = isM ? '#4ea8ff' : '#ff6fb0';
+    txt.style.color = isM ? '#4ea8ff' : '#ff6fb0';
+    txt.textContent = 'È UN ' + (isM ? 'MASCHIO! 💙' : 'FEMMINA! 💗');
+    result.classList.add('show');
+    playPartyChime();
+    setTimeout(()=> result.classList.remove('show'), 3200);
+  });
+}
+
+/* =========================================================
+   MODULO 3: RAGGI X — camera + overlay scheletro trascinabile
+   ========================================================= */
+let xrayStream = null;
+
+// Scheletri generati come SVG inline (funzionano sempre, senza URL esterni).
+// Per usare le TUE immagini reali: sostituisci ogni valore di questa mappa
+// con il percorso del tuo file PNG trasparente, es. "immagini/scheletro_orso.png"
+const SKELETON_SVG = {
+  Orsacchiotto: skeletonBearSVG(),
+  Bambola: skeletonHumanSVG('#bfe9ff'),
+  Bambino: skeletonHumanSVG('#bfe9ff'),
+  Bambina: skeletonHumanSVG('#ffd0ea')
+};
+
+function skeletonHumanSVG(color){
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 400">
+    <g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round">
+      <circle cx="100" cy="45" r="32" fill="${color}" stroke="none" opacity="0.85"/>
+      <line x1="100" y1="77" x2="100" y2="100"/>
+      <line x1="60" y1="105" x2="140" y2="105"/>
+      <line x1="100" y1="100" x2="100" y2="230"/>
+      <line x1="70" y1="115" x2="130" y2="115"/>
+      <line x1="70" y1="135" x2="130" y2="135"/>
+      <line x1="72" y1="155" x2="128" y2="155"/>
+      <line x1="76" y1="175" x2="124" y2="175"/>
+      <line x1="60" y1="105" x2="35" y2="180"/>
+      <line x1="35" y1="180" x2="25" y2="250"/>
+      <line x1="140" y1="105" x2="165" y2="180"/>
+      <line x1="165" y1="180" x2="175" y2="250"/>
+      <line x1="100" y1="230" x2="65" y2="260"/>
+      <line x1="100" y1="230" x2="135" y2="260"/>
+      <line x1="65" y1="260" x2="55" y2="360"/>
+      <line x1="135" y1="260" x2="145" y2="360"/>
+      <line x1="55" y1="360" x2="40" y2="378"/>
+      <line x1="145" y1="360" x2="160" y2="378"/>
+    </g>
+  </svg>`);
+}
+function skeletonBearSVG(){
+  const color = '#bfe9ff';
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 360">
+    <g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round">
+      <circle cx="70" cy="30" r="14" fill="${color}" stroke="none" opacity="0.8"/>
+      <circle cx="130" cy="30" r="14" fill="${color}" stroke="none" opacity="0.8"/>
+      <circle cx="100" cy="55" r="34" fill="${color}" stroke="none" opacity="0.85"/>
+      <line x1="100" y1="89" x2="100" y2="105"/>
+      <ellipse cx="100" cy="170" rx="55" ry="65" fill="none"/>
+      <line x1="60" y1="115" x2="20" y2="170"/>
+      <line x1="20" y1="170" x2="15" y2="215"/>
+      <line x1="140" y1="115" x2="180" y2="170"/>
+      <line x1="180" y1="170" x2="185" y2="215"/>
+      <line x1="70" y1="230" x2="55" y2="300"/>
+      <line x1="130" y1="230" x2="145" y2="300"/>
+      <ellipse cx="52" cy="312" rx="16" ry="10" fill="${color}" stroke="none" opacity="0.8"/>
+      <ellipse cx="148" cy="312" rx="16" ry="10" fill="${color}" stroke="none" opacity="0.8"/>
+    </g>
+  </svg>`);
+}
+
+document.getElementById('btnStartCamera').addEventListener('click', startCamera);
+
+async function startCamera(){
+  try{
+    xrayStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+    const video = document.getElementById('xray-video');
+    video.srcObject = xrayStream;
+    video.classList.remove('hidden');
+    document.getElementById('xrayPlaceholder').classList.add('hidden');
+
+    const overlay = document.getElementById('xray-overlay');
+    overlay.src = SKELETON_SVG[patient.tipo] || SKELETON_SVG.Bambino;
+    overlay.classList.remove('hidden');
+    positionOverlayCenter();
+    document.getElementById('btnResetOverlay').classList.remove('hidden');
+    document.getElementById('xrayHint').classList.remove('hidden');
+    examResults.xrayDone = true;
+  }catch(err){
+    alert('Non riesco ad accendere la telecamera. Controlla i permessi del browser (serve HTTPS).');
+  }
+}
+function stopCameraIfRunning(){
+  if(xrayStream){
+    xrayStream.getTracks().forEach(t=>t.stop());
+    xrayStream = null;
+    const video = document.getElementById('xray-video');
+    video.classList.add('hidden'); video.srcObject = null;
+    document.getElementById('xray-overlay').classList.add('hidden');
+    document.getElementById('xrayPlaceholder').classList.remove('hidden');
+    document.getElementById('btnResetOverlay').classList.add('hidden');
+    document.getElementById('xrayHint').classList.add('hidden');
+  }
+}
+function positionOverlayCenter(){
+  const body = document.getElementById('xrayBody');
+  const overlay = document.getElementById('xray-overlay');
+  const bw = body.clientWidth, bh = body.clientHeight;
+  overlay.style.left = (bw/2 - 170) + 'px';
+  overlay.style.top = (bh/2 - 190) + 'px';
+}
+document.getElementById('btnResetOverlay').addEventListener('click', positionOverlayCenter);
+
+/* Drag con Pointer Events: copre sia touch (iPad) sia mouse */
+(function enableDrag(){
+  const overlay = document.getElementById('xray-overlay');
+  let dragging=false, offX=0, offY=0;
+  overlay.addEventListener('pointerdown', (e)=>{
+    dragging = true;
+    overlay.setPointerCapture(e.pointerId);
+    const rect = overlay.getBoundingClientRect();
+    const bodyRect = document.getElementById('xrayBody').getBoundingClientRect();
+    offX = e.clientX - rect.left; offY = e.clientY - rect.top;
+  });
+  overlay.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    const bodyRect = document.getElementById('xrayBody').getBoundingClientRect();
+    let x = e.clientX - bodyRect.left - offX;
+    let y = e.clientY - bodyRect.top - offY;
+    overlay.style.left = x + 'px';
+    overlay.style.top = y + 'px';
+  });
+  ['pointerup','pointercancel'].forEach(ev=> overlay.addEventListener(ev, ()=> dragging=false));
+})();
+
+/* =========================================================
+   MODULO 4: REFERTO
+   ========================================================= */
+const DIAGNOSI = [
+  "Grave carenza di coccole acute",
+  "Allergia cronica alle verdure verdi",
+  "Sindrome del ginocchio sbucciato ricorrente",
+  "Livello di simpatia pericolosamente alto",
+  "Superpoteri in fase di sviluppo avanzato",
+  "Eccesso di energia da super-eroe",
+  "Starnuti da solletico incontrollato",
+  "Pancia che borbotta per troppi biscotti",
+  "Occhi scintillanti da curiosità infinita",
+  "Piedi che non stanno mai fermi",
+  "Sorriso a 32 denti perfettamente funzionante",
+  "Fame improvvisa di merenda cronica"
+];
+const TERAPIE = [
+  "3 sciroppi al gusto fragola, uno al giorno",
+  "2 cerotti di supereroe sulle ginocchia",
+  "1 flebo urgente di cioccolata calda",
+  "Riposo forzato sul divano guardando i cartoni",
+  "Abbraccio terapeutico ogni sera prima di dormire",
+  "Merenda extra a base di gelato, solo per motivi medici",
+  "Almeno 10 minuti di risate al giorno",
+  "Favola della buonanotte obbligatoria",
+  "Massaggio ai piedi da parte di mamma o papà",
+  "Adesivo dorato per il coraggio dimostrato",
+  "Bacio della buonanotte a orario fisso",
+  "Passeggiata al parco per ricaricare le energie"
+];
+function pick(arr,n){ const c=[...arr]; const out=[]; for(let i=0;i<n && c.length;i++){ out.push(c.splice(Math.floor(Math.random()*c.length),1)[0]); } return out; }
+
+// Commenti buffi per ogni esito possibile dell'ECG
+const ECG_COMMENTI = {
+  normal: 'ritmo regolare, un cuoricino perfetto',
+  tachycardia: 'batticuore velocissimo, tanta energia da giocare',
+  bradycardia: 'battito bello rilassato, modalità relax attivata',
+  afib: 'ritmo un po\' scombinato dall\'emozione della visita'
+};
+const XRAY_COMMENTI = [
+  'nessuna frattura, ossa fortissime!',
+  'scheletro in perfetta forma da super pupazzo',
+  'tutto al suo posto, pronto per nuove avventure',
+  'struttura solidissima, zero crepe da segnalare'
+];
+
+function buildEsamiEseguiti(){
+  const righe = [];
+  if(examResults.ecgDone){
+    const cond = ECG_COMMENTI[examResults.ecgCondition] || ECG_COMMENTI.normal;
+    righe.push(`ECG: ${examResults.ecgBPM} BPM — ${cond}`);
+  }
+  if(examResults.ecoDone){
+    const sesso = examResults.ecoSex ? `sesso scoperto: ${examResults.ecoSex}` : 'sesso non ancora svelato, sorpresa rimandata';
+    righe.push(`Ecografia: battito controllato, ${sesso}`);
+  }
+  if(examResults.xrayDone){
+    righe.push(`Raggi X: ${pick(XRAY_COMMENTI,1)[0]}`);
+  }
+  if(righe.length === 0){
+    righe.push('Nessun esame specifico eseguito, solo controllo generale');
+  }
+  return righe;
+}
+
+document.getElementById('btn-referto').addEventListener('click', ()=>{
+  document.getElementById('ref-paziente').textContent = `${patient.nome} ${patient.cognome} (${patient.eta} anni)`;
+  document.getElementById('ref-tipo').textContent = patient.tipo;
+  document.getElementById('ref-data').textContent = new Date().toLocaleDateString('it-IT', { day:'2-digit', month:'long', year:'numeric' });
+
+  const esamiList = document.getElementById('ref-esami');
+  esamiList.innerHTML = '';
+  buildEsamiEseguiti().forEach(t=>{ const li=document.createElement('li'); li.textContent=t; esamiList.appendChild(li); });
+
+  document.getElementById('ref-diagnosi').textContent = pick(DIAGNOSI,1)[0];
+  const terapieList = document.getElementById('ref-terapie');
+  terapieList.innerHTML = '';
+  pick(TERAPIE,3).forEach(t=>{ const li=document.createElement('li'); li.textContent=t; terapieList.appendChild(li); });
+  const medici = ['Peluche','Coccola','Fragolina','Girasole','Arcobaleno'];
+  document.getElementById('ref-medico').textContent = 'Dr. ' + medici[Math.floor(Math.random()*medici.length)];
+  document.getElementById('referto-overlay').classList.remove('hidden');
+});
+document.getElementById('btnChiudiReferto').addEventListener('click', ()=>{
+  document.getElementById('referto-overlay').classList.add('hidden');
+});
+document.getElementById('btnNuovaVisita').addEventListener('click', ()=>{
+  document.getElementById('referto-overlay').classList.add('hidden');
+  stopCameraIfRunning();
+  ecgStop();
+  examResults.ecgDone=false; examResults.ecgBPM=null; examResults.ecgCondition=null;
+  examResults.ecoDone=false; examResults.ecoSex=null; examResults.xrayDone=false;
+  examsVisited.ecg=false; examsVisited.eco=false; examsVisited.xray=false;
+  Object.values(examPanels).forEach(p=>p.classList.add('hidden'));
+  examSelector.classList.remove('hidden');
+  document.getElementById('in-nome').value='';
+  document.getElementById('in-cognome').value='';
+  document.getElementById('in-dob').value='';
+  document.getElementById('in-sesso').value='';
+  document.getElementById('in-tipo').value='';
+  showScreen('screen-accettazione');
+});
+</script>
+</body>
+</html>
