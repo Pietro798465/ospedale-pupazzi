@@ -580,7 +580,7 @@ function playPartyChime(){
    ========================================================= */
 const LEAD_NAMES = ["I","V1","II","V2","III","V3","aVR","V4","aVL","V5","aVF","V6"];
 let ecgBPM = 70, ecgGain = 10, ecgCondition = 'normal', ecgTime = 0, ecgInitDone = false;
-let ecgRAF = null, ecgLastTs = null, ecgAcc = 0;
+let ecgRAF = null, ecgLastTs = null, ecgAcc = 0, ecgBeepInterval = null;
 const ECG_UPDATE_MS = 33; // ~30 aggiornamenti al secondo: fluido ma leggero su iPad
 
 function generateECGPoint(t_phase, leadName, condition){
@@ -804,22 +804,32 @@ function ecgStart(){
   examResults.ecgDone = true;
   examResults.ecgBPM = ecgBPM;
   examResults.ecgCondition = ecgCondition;
+  
+  // AVVIA IL SUONO (Frequenza calcolata sui battiti al minuto)
+  if(ecgBeepInterval) clearInterval(ecgBeepInterval);
+  ecgBeepInterval = setInterval(() => beep(800, 0, 0.1, 'sine', 0.15), (60 / ecgBPM) * 1000);
 }
+
 function ecgStop(){
   if(ecgRAF){ cancelAnimationFrame(ecgRAF); ecgRAF = null; }
   document.getElementById('ecgStart').disabled = false;
   document.getElementById('ecgStop').disabled = true;
   document.getElementById('ecgStatus').textContent = 'FERMO';
+  
+  // FERMA IL SUONO
+  if(ecgBeepInterval) clearInterval(ecgBeepInterval);
 }
-function ecgSetBPM(v){ ecgBPM=v; document.getElementById('bpmVal').textContent=v; if(examResults.ecgDone) examResults.ecgBPM=v; }
-function ecgSetGain(v){ ecgGain=v; document.getElementById('gainVal').textContent=v; }
-function ecgSetCondition(c){
-  ecgCondition=c;
-  document.querySelectorAll('.ecg-controls .grp:last-child button').forEach(b=>b.classList.remove('active'));
-  document.getElementById({normal:'condNormal',tachycardia:'condTachy',bradycardia:'condBrady',afib:'condAfib'}[c]).classList.add('active');
-  ecgSetBPM({normal:70,tachycardia:130,bradycardia:50,afib:100}[c]);
-  document.getElementById('bpmSlider').value = ecgBPM;
-  if(examResults.ecgDone) examResults.ecgCondition = ecgCondition;
+
+function ecgSetBPM(v){ 
+  ecgBPM=v; 
+  document.getElementById('bpmVal').textContent=v; 
+  if(examResults.ecgDone) examResults.ecgBPM=v; 
+  
+  // AGGIORNA LA VELOCITA' DEL SUONO SE SI MUOVE IL CURSORE
+  if(document.getElementById('ecgStart').disabled) {
+    clearInterval(ecgBeepInterval);
+    ecgBeepInterval = setInterval(() => beep(800, 0, 0.1, 'sine', 0.15), (60 / ecgBPM) * 1000);
+  }
 }
 
 /* =========================================================
