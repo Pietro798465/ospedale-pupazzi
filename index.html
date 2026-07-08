@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Ospedale dei Pupazzi - Simulatore Medico</title>
+<!-- Librerie MediaPipe: servono al modulo Raggi X per riconoscere mano/corpo dalla telecamera e disegnarci sopra lo scheletro -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=VT323&display=swap');
 
@@ -191,22 +194,47 @@ html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--green)
 .eco-side button:active{background:var(--green-dim);box-shadow:0 0 14px var(--green-glow);}
 .eco-hint{font-size:11px;color:var(--cyan);opacity:.75;line-height:1.5;padding:6px 2px;}
 
-/* ---------- RAGGI X MODULE ---------- */
+/* ---------- RAGGI X MODULE (scansione ossea dal vivo con MediaPipe) ---------- */
 .xray-body{flex:1;position:relative;overflow:hidden;background:#000;}
-#xray-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:grayscale(1) contrast(1.25) brightness(.9);}
-#xray-video.mirror{transform:scaleX(-1);}
+#xray-video{display:none;} /* la webcam resta nascosta: serve solo come sorgente, si vede solo il canvas elaborato */
+#xray-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
 .xray-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:14px;color:var(--cyan);text-align:center;padding:30px;}
+  gap:14px;color:var(--cyan);text-align:center;padding:30px;z-index:2;}
 .xray-placeholder button{
   background:var(--green-dim);border:1px solid var(--green);color:var(--green);padding:12px 22px;
   border-radius:8px;cursor:pointer;font-family:var(--font-mono);letter-spacing:1px;
 }
-#xray-overlay{position:absolute;width:340px;touch-action:none;opacity:.92;filter:drop-shadow(0 0 6px rgba(120,200,255,.6));cursor:grab;}
-#xray-overlay:active{cursor:grabbing;}
-.xray-hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:12px;color:var(--cyan);
-  letter-spacing:1px;opacity:.8;pointer-events:none;text-shadow:0 0 6px #000;}
-.xray-reset{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.5);border:1px solid var(--green-dim);
-  color:var(--green);padding:8px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font-mono);}
+
+.xray-hud{position:absolute;top:12px;left:14px;z-index:5;pointer-events:none;font-family:var(--font-mono);
+  color:var(--cyan);text-shadow:0 0 6px rgba(43,231,255,.6);font-size:11px;line-height:1.7;letter-spacing:1px;}
+.xray-hud-right{left:auto;right:14px;text-align:right;}
+#xrayDetectionStatus{color:var(--red);font-weight:700;text-shadow:0 0 6px var(--red-glow);}
+
+.xray-controls-bar{position:absolute;bottom:14px;left:0;right:0;z-index:6;
+  display:flex;align-items:center;justify-content:center;gap:18px;padding:0 14px;flex-wrap:wrap;}
+.xray-mode-selector{display:flex;gap:10px;}
+.xray-mode-btn{background:rgba(5,17,6,.8);border:1px solid var(--green-dim);color:var(--green);
+  padding:9px 16px;border-radius:20px;font-size:12px;letter-spacing:1px;cursor:pointer;font-family:var(--font-mono);}
+.xray-mode-btn.active{background:var(--green-dim);border-color:var(--green);box-shadow:0 0 12px var(--green-glow);}
+.xray-shutter{width:54px;height:54px;border-radius:50%;background:#fff;border:4px solid var(--green-dim);
+  box-shadow:0 0 0 3px var(--green),0 0 16px var(--green-glow);cursor:pointer;flex-shrink:0;padding:0;}
+.xray-shutter:active{transform:scale(.92);}
+
+.xray-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:20;}
+.xray-flash.flash-active{animation:xrayFlashAnim .4s ease-out;}
+@keyframes xrayFlashAnim{0%{opacity:1;}100%{opacity:0;}}
+
+.xray-preview-modal{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:600;
+  display:flex;align-items:center;justify-content:center;padding:20px;}
+.xray-preview-card{background:var(--panel);border:2px solid var(--green-dim);border-radius:14px;
+  padding:22px;max-width:min(520px,92vw);text-align:center;box-shadow:0 0 40px var(--green-glow);}
+.xray-preview-card h3{margin:0 0 14px;font-family:var(--font-crt);letter-spacing:2px;color:var(--green);font-size:22px;}
+.xray-preview-card img{max-width:100%;max-height:55vh;border-radius:8px;border:1px solid var(--green-dim);margin-bottom:16px;}
+.xray-preview-actions{display:flex;gap:12px;justify-content:center;}
+.xray-preview-actions button{padding:11px 20px;border-radius:8px;border:none;cursor:pointer;font-family:var(--font-mono);
+  font-size:13px;font-weight:700;letter-spacing:1px;}
+#btnXrayPreviewClose{background:#333;color:#fff;}
+#btnXrayPreviewSave{background:linear-gradient(180deg,#0fff7a,#00c85a);color:#00220f;}
 
 /* ---------- REFERTO ---------- */
 #referto-overlay{
@@ -399,19 +427,48 @@ html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--green)
         <div class="xray-body" id="xrayBody">
           <div class="xray-placeholder" id="xrayPlaceholder">
             <div style="font-size:46px;">📷</div>
-            <div>Accendi la telecamera per inquadrare il pupazzo</div>
+            <div>Accendi la telecamera per scansionare il pupazzo</div>
             <button id="btnStartCamera">ACCENDI TELECAMERA</button>
           </div>
-          <video id="xray-video" class="hidden" autoplay playsinline muted></video>
-          <img id="xray-overlay" class="hidden" draggable="false">
-          <button class="xray-reset hidden" id="btnResetOverlay">RIALLINEA</button>
-          <div class="xray-hint hidden" id="xrayHint">Trascina lo scheletro per allinearlo al pupazzo</div>
+          <video id="xray-video" autoplay playsinline muted></video>
+          <canvas id="xray-canvas" class="hidden"></canvas>
+
+          <div class="xray-hud hidden" id="xrayHud">
+            <div>SISTEMA: ATTIVO</div>
+            <div>FILTRO: OSTEOLOGIA X-RAY</div>
+            <div id="xrayDetectionStatus">NESSUN TARGET</div>
+          </div>
+          <div class="xray-hud xray-hud-right hidden" id="xrayHudRight">
+            <div>BERSAGLIO: <span id="xrayTargetHud">MANO</span></div>
+          </div>
+
+          <div class="xray-controls-bar hidden" id="xrayControlsBar">
+            <div class="xray-mode-selector">
+              <button class="xray-mode-btn active" id="xrayModeHands">🖐 Mano</button>
+              <button class="xray-mode-btn" id="xrayModePose">🦴 Torace/Cranio</button>
+            </div>
+            <button class="xray-shutter" id="btnXraySnap" title="Scatta la radiografia"></button>
+          </div>
+
+          <div class="xray-flash" id="xrayFlash"></div>
         </div>
       </div>
     </div>
 
     <div class="visit-footer">
       <button id="btn-referto">🖨 TERMINA VISITA E STAMPA REFERTO</button>
+    </div>
+  </div>
+
+  <!-- ============ ANTEPRIMA SCANSIONE RAGGI X ============ -->
+  <div class="xray-preview-modal hidden" id="xrayPreviewModal">
+    <div class="xray-preview-card">
+      <h3>SCANSIONE COMPLETATA</h3>
+      <img id="xrayPreviewImg" alt="Radiografia scattata">
+      <div class="xray-preview-actions">
+        <button id="btnXrayPreviewClose">RIPROVA</button>
+        <button id="btnXrayPreviewSave">SALVA FOTO</button>
+      </div>
     </div>
   </div>
 
@@ -910,130 +967,247 @@ function initEcoIfNeeded(){
 }
 
 /* =========================================================
-   MODULO 3: RAGGI X — camera + overlay scheletro trascinabile
+   MODULO 3: RAGGI X — scansione ossea dal vivo con MediaPipe.
+   La webcam inquadra il pupazzo, MediaPipe riconosce una mano
+   oppure un "corpo" (busto/testa) e sopra viene disegnato in
+   tempo reale uno scheletro in stile radiografia, direttamente
+   sul canvas che il bambino vede (niente immagini da trascinare
+   a mano: lo scheletro segue davvero quello che inquadra).
    ========================================================= */
 let xrayStream = null;
+let xrayHandsModel = null, xrayPoseModel = null, xrayModelsReady = false;
+let xrayMode = 'hands'; // 'hands' oppure 'pose'
+let xrayActiveResults = null;
+let xrayRAF = null;
 
-// Scheletri generati come SVG inline (funzionano sempre, senza URL esterni).
-// Per usare le TUE immagini reali: sostituisci ogni valore di questa mappa
-// con il percorso del tuo file PNG trasparente, es. "immagini/scheletro_orso.png"
-const SKELETON_SVG = {
-  Orsacchiotto: skeletonBearSVG(),
-  Bambola: skeletonHumanSVG('#bfe9ff'),
-  Bambino: skeletonHumanSVG('#bfe9ff'),
-  Bambina: skeletonHumanSVG('#ffd0ea')
-};
+const xrayVideoEl = document.getElementById('xray-video');
+const xrayCanvasEl = document.getElementById('xray-canvas');
+const xrayCtx = xrayCanvasEl.getContext('2d');
 
-function skeletonHumanSVG(color){
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 400">
-    <g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round">
-      <circle cx="100" cy="45" r="32" fill="${color}" stroke="none" opacity="0.85"/>
-      <line x1="100" y1="77" x2="100" y2="100"/>
-      <line x1="60" y1="105" x2="140" y2="105"/>
-      <line x1="100" y1="100" x2="100" y2="230"/>
-      <line x1="70" y1="115" x2="130" y2="115"/>
-      <line x1="70" y1="135" x2="130" y2="135"/>
-      <line x1="72" y1="155" x2="128" y2="155"/>
-      <line x1="76" y1="175" x2="124" y2="175"/>
-      <line x1="60" y1="105" x2="35" y2="180"/>
-      <line x1="35" y1="180" x2="25" y2="250"/>
-      <line x1="140" y1="105" x2="165" y2="180"/>
-      <line x1="165" y1="180" x2="175" y2="250"/>
-      <line x1="100" y1="230" x2="65" y2="260"/>
-      <line x1="100" y1="230" x2="135" y2="260"/>
-      <line x1="65" y1="260" x2="55" y2="360"/>
-      <line x1="135" y1="260" x2="145" y2="360"/>
-      <line x1="55" y1="360" x2="40" y2="378"/>
-      <line x1="145" y1="360" x2="160" y2="378"/>
-    </g>
-  </svg>`);
+function xrayResizeCanvas(){
+  const body = document.getElementById('xrayBody');
+  xrayCanvasEl.width = body.clientWidth;
+  xrayCanvasEl.height = body.clientHeight;
 }
-function skeletonBearSVG(){
-  const color = '#bfe9ff';
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 360">
-    <g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round">
-      <circle cx="70" cy="30" r="14" fill="${color}" stroke="none" opacity="0.8"/>
-      <circle cx="130" cy="30" r="14" fill="${color}" stroke="none" opacity="0.8"/>
-      <circle cx="100" cy="55" r="34" fill="${color}" stroke="none" opacity="0.85"/>
-      <line x1="100" y1="89" x2="100" y2="105"/>
-      <ellipse cx="100" cy="170" rx="55" ry="65" fill="none"/>
-      <line x1="60" y1="115" x2="20" y2="170"/>
-      <line x1="20" y1="170" x2="15" y2="215"/>
-      <line x1="140" y1="115" x2="180" y2="170"/>
-      <line x1="180" y1="170" x2="185" y2="215"/>
-      <line x1="70" y1="230" x2="55" y2="300"/>
-      <line x1="130" y1="230" x2="145" y2="300"/>
-      <ellipse cx="52" cy="312" rx="16" ry="10" fill="${color}" stroke="none" opacity="0.8"/>
-      <ellipse cx="148" cy="312" rx="16" ry="10" fill="${color}" stroke="none" opacity="0.8"/>
-    </g>
-  </svg>`);
+window.addEventListener('resize', xrayResizeCanvas);
+
+// I modelli IA vengono creati una sola volta e poi riusati ad ogni visita
+function initXrayModelsIfNeeded(){
+  if(xrayModelsReady) return;
+  xrayModelsReady = true;
+
+  xrayHandsModel = new Hands({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  xrayHandsModel.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.55, minTrackingConfidence:0.5 });
+  xrayHandsModel.onResults((res)=>{ xrayActiveResults = { type:'hands', data:res }; });
+
+  xrayPoseModel = new Pose({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+  xrayPoseModel.setOptions({ modelComplexity:1, smoothLandmarks:true, minDetectionConfidence:0.55, minTrackingConfidence:0.5 });
+  xrayPoseModel.onResults((res)=>{ xrayActiveResults = { type:'pose', data:res }; });
 }
+
+function xraySetMode(mode){
+  xrayMode = mode;
+  document.getElementById('xrayModeHands').classList.toggle('active', mode==='hands');
+  document.getElementById('xrayModePose').classList.toggle('active', mode==='pose');
+  document.getElementById('xrayTargetHud').textContent = mode==='hands' ? 'MANO' : 'TORACE / CRANIO';
+  xrayActiveResults = null;
+}
+document.getElementById('xrayModeHands').addEventListener('click', ()=> xraySetMode('hands'));
+document.getElementById('xrayModePose').addEventListener('click', ()=> xraySetMode('pose'));
 
 document.getElementById('btnStartCamera').addEventListener('click', startCamera);
 
 async function startCamera(){
   try{
-    xrayStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
-    const video = document.getElementById('xray-video');
-    video.srcObject = xrayStream;
-    video.classList.remove('hidden');
-    document.getElementById('xrayPlaceholder').classList.add('hidden');
+    initXrayModelsIfNeeded();
+    // Fotocamera posteriore, così l'iPad inquadra il pupazzo davanti a sé
+    xrayStream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, audio:false
+    });
+    xrayVideoEl.srcObject = xrayStream;
+    await xrayVideoEl.play();
 
-    const overlay = document.getElementById('xray-overlay');
-    overlay.src = SKELETON_SVG[patient.tipo] || SKELETON_SVG.Bambino;
-    overlay.classList.remove('hidden');
-    positionOverlayCenter();
-    document.getElementById('btnResetOverlay').classList.remove('hidden');
-    document.getElementById('xrayHint').classList.remove('hidden');
+    document.getElementById('xrayPlaceholder').classList.add('hidden');
+    xrayCanvasEl.classList.remove('hidden');
+    document.getElementById('xrayHud').classList.remove('hidden');
+    document.getElementById('xrayHudRight').classList.remove('hidden');
+    document.getElementById('xrayControlsBar').classList.remove('hidden');
+
+    xrayActiveResults = null;
+    xrayResizeCanvas();
+    if(xrayRAF) cancelAnimationFrame(xrayRAF);
+    xrayRAF = requestAnimationFrame(xrayProcessFrame);
     examResults.xrayDone = true;
   }catch(err){
     alert('Non riesco ad accendere la telecamera. Controlla i permessi del browser (serve HTTPS).');
   }
 }
+
 function stopCameraIfRunning(){
+  if(xrayRAF){ cancelAnimationFrame(xrayRAF); xrayRAF = null; }
   if(xrayStream){
     xrayStream.getTracks().forEach(t=>t.stop());
     xrayStream = null;
-    const video = document.getElementById('xray-video');
-    video.classList.add('hidden'); video.srcObject = null;
-    document.getElementById('xray-overlay').classList.add('hidden');
-    document.getElementById('xrayPlaceholder').classList.remove('hidden');
-    document.getElementById('btnResetOverlay').classList.add('hidden');
-    document.getElementById('xrayHint').classList.add('hidden');
   }
+  xrayVideoEl.srcObject = null;
+  xrayActiveResults = null;
+  xrayCanvasEl.classList.add('hidden');
+  document.getElementById('xrayPlaceholder').classList.remove('hidden');
+  document.getElementById('xrayHud').classList.add('hidden');
+  document.getElementById('xrayHudRight').classList.add('hidden');
+  document.getElementById('xrayControlsBar').classList.add('hidden');
 }
-function positionOverlayCenter(){
-  const body = document.getElementById('xrayBody');
-  const overlay = document.getElementById('xray-overlay');
-  const bw = body.clientWidth, bh = body.clientHeight;
-  overlay.style.left = (bw/2 - 170) + 'px';
-  overlay.style.top = (bh/2 - 190) + 'px';
-}
-document.getElementById('btnResetOverlay').addEventListener('click', positionOverlayCenter);
 
-/* Drag con Pointer Events: copre sia touch (iPad) sia mouse */
-(function enableDrag(){
-  const overlay = document.getElementById('xray-overlay');
-  let dragging=false, offX=0, offY=0;
-  overlay.addEventListener('pointerdown', (e)=>{
-    dragging = true;
-    overlay.setPointerCapture(e.pointerId);
-    const rect = overlay.getBoundingClientRect();
-    const bodyRect = document.getElementById('xrayBody').getBoundingClientRect();
-    offX = e.clientX - rect.left; offY = e.clientY - rect.top;
+// Ciclo continuo: manda il fotogramma al modello IA giusto, poi disegna il risultato
+async function xrayProcessFrame(){
+  if(!xrayStream) return; // la visita è stata chiusa nel frattempo
+  if(xrayVideoEl.readyState >= 2){
+    if(xrayMode === 'hands' && xrayHandsModel) await xrayHandsModel.send({ image:xrayVideoEl });
+    else if(xrayMode === 'pose' && xrayPoseModel) await xrayPoseModel.send({ image:xrayVideoEl });
+  }
+  xrayDrawScene();
+  xrayRAF = requestAnimationFrame(xrayProcessFrame);
+}
+
+function xrayDrawScene(){
+  const w = xrayCanvasEl.width, h = xrayCanvasEl.height;
+  if(w===0 || h===0) return;
+  xrayCtx.save();
+  xrayCtx.clearRect(0,0,w,h);
+
+  // Sfondo: il video reale in bianco e nero stile radiografia
+  xrayCtx.filter = 'grayscale(1) contrast(1.3) brightness(.55)';
+  xrayCtx.drawImage(xrayVideoEl, 0, 0, w, h);
+  xrayCtx.filter = 'none';
+
+  let locked = false;
+  if(xrayActiveResults && xrayActiveResults.type === xrayMode){
+    const res = xrayActiveResults.data;
+    if(xrayMode==='hands' && res.multiHandLandmarks && res.multiHandLandmarks.length){
+      locked = true;
+      xrayDrawHandBones(res.multiHandLandmarks[0], w, h);
+    } else if(xrayMode==='pose' && res.poseLandmarks){
+      locked = true;
+      xrayDrawPoseBones(res.poseLandmarks, w, h);
+    }
+  }
+  const statusEl = document.getElementById('xrayDetectionStatus');
+  if(locked){ statusEl.textContent = 'TARGET AGGANCIATO'; statusEl.style.color = 'var(--green)'; }
+  else { statusEl.textContent = 'NESSUN TARGET'; statusEl.style.color = 'var(--red)'; }
+
+  xrayCtx.restore();
+}
+
+// Scheletro della mano: falangi e ossa del palmo
+function xrayDrawHandBones(landmarks, w, h){
+  const chains = [
+    [0,1,2,3,4],     // pollice
+    [0,5,6,7,8],     // indice
+    [9,10,11,12],    // medio
+    [13,14,15,16],   // anulare
+    [0,17,18,19,20], // mignolo
+    [5,9,13,17]      // base del palmo
+  ];
+  xrayCtx.lineWidth = 6; xrayCtx.lineCap = 'round';
+  xrayCtx.shadowBlur = 14; xrayCtx.shadowColor = '#2be7ff';
+  xrayCtx.strokeStyle = 'rgba(190,233,255,0.92)';
+  chains.forEach(chain=>{
+    xrayCtx.beginPath();
+    chain.forEach((idx,i)=>{
+      const p = landmarks[idx], x = p.x*w, y = p.y*h;
+      if(i===0) xrayCtx.moveTo(x,y); else xrayCtx.lineTo(x,y);
+    });
+    xrayCtx.stroke();
   });
-  overlay.addEventListener('pointermove', (e)=>{
-    if(!dragging) return;
-    const bodyRect = document.getElementById('xrayBody').getBoundingClientRect();
-    let x = e.clientX - bodyRect.left - offX;
-    let y = e.clientY - bodyRect.top - offY;
-    overlay.style.left = x + 'px';
-    overlay.style.top = y + 'px';
+  landmarks.forEach(p=>{
+    const x=p.x*w, y=p.y*h;
+    xrayCtx.beginPath(); xrayCtx.arc(x,y,5,0,Math.PI*2);
+    xrayCtx.fillStyle = '#ffffff'; xrayCtx.shadowBlur = 10; xrayCtx.shadowColor = '#00ff6a';
+    xrayCtx.fill();
   });
-  ['pointerup','pointercancel'].forEach(ev=> overlay.addEventListener(ev, ()=> dragging=false));
-})();
+}
+
+// Scheletro di torace, bacino, braccia e cranio (stimato dalla posa)
+function xrayDrawPoseBones(landmarks, w, h){
+  xrayCtx.lineWidth = 8; xrayCtx.lineCap = 'round';
+  xrayCtx.shadowBlur = 16; xrayCtx.shadowColor = '#2be7ff';
+  xrayCtx.strokeStyle = 'rgba(190,233,255,0.9)';
+
+  const getPt = (idx)=>({ x:landmarks[idx].x*w, y:landmarks[idx].y*h, vis:landmarks[idx].visibility });
+  const sL=getPt(11), sR=getPt(12), hL=getPt(23), hR=getPt(24), eL=getPt(13), eR=getPt(14), pL=getPt(15), pR=getPt(16);
+
+  if(sL.vis>0.5 && sR.vis>0.5){
+    // clavicole
+    xrayCtx.beginPath(); xrayCtx.moveTo(sL.x,sL.y); xrayCtx.lineTo(sR.x,sR.y); xrayCtx.stroke();
+
+    const sternumX=(sL.x+sR.x)/2, sternumY=(sL.y+sR.y)/2;
+    const pelvisX=(hL.x+hR.x)/2, pelvisY=(hL.y+hR.y)/2;
+
+    // colonna/sterno
+    xrayCtx.beginPath(); xrayCtx.moveTo(sternumX,sternumY); xrayCtx.lineTo(pelvisX,pelvisY); xrayCtx.stroke();
+
+    // costole simulate
+    xrayCtx.lineWidth = 3;
+    for(let i=1;i<=4;i++){
+      const ribY = sternumY + (pelvisY-sternumY)*(i*0.18);
+      const ribW = Math.abs(sL.x-sR.x)*(0.5-(i*0.05));
+      xrayCtx.beginPath();
+      xrayCtx.ellipse(sternumX, ribY, ribW, 12, 0, 0, Math.PI);
+      xrayCtx.stroke();
+    }
+    xrayCtx.lineWidth = 8;
+
+    // cranio stimato sopra lo sterno
+    const headRadius = Math.abs(sL.x-sR.x)*0.28;
+    const headY = sternumY - headRadius*1.8;
+    xrayCtx.save();
+    xrayCtx.shadowBlur = 22; xrayCtx.shadowColor = '#2be7ff';
+    xrayCtx.fillStyle = 'rgba(20,40,45,0.3)';
+    xrayCtx.strokeStyle = 'rgba(230,255,245,0.9)';
+    xrayCtx.lineWidth = 5;
+    xrayCtx.beginPath(); xrayCtx.arc(sternumX, headY, headRadius, 0, Math.PI*2);
+    xrayCtx.fill(); xrayCtx.stroke();
+    xrayCtx.fillStyle = 'rgba(230,255,245,0.8)';
+    xrayCtx.fillRect(sternumX-headRadius*0.4, headY+headRadius*0.7, headRadius*0.8, headRadius*0.4);
+    xrayCtx.fillStyle = '#000';
+    xrayCtx.shadowBlur = 0;
+    xrayCtx.beginPath();
+    xrayCtx.arc(sternumX-headRadius*0.35, headY+headRadius*0.1, headRadius*0.22, 0, Math.PI*2);
+    xrayCtx.arc(sternumX+headRadius*0.35, headY+headRadius*0.1, headRadius*0.22, 0, Math.PI*2);
+    xrayCtx.fill();
+    xrayCtx.restore();
+  }
+
+  xrayCtx.lineWidth = 8;
+  if(hL.vis>0.5 && hR.vis>0.5){
+    xrayCtx.beginPath(); xrayCtx.moveTo(hL.x,hL.y); xrayCtx.lineTo(hR.x,hR.y); xrayCtx.stroke();
+  }
+  const drawBoneSegment=(p1,p2)=>{
+    if(p1.vis>0.5 && p2.vis>0.5){ xrayCtx.beginPath(); xrayCtx.moveTo(p1.x,p1.y); xrayCtx.lineTo(p2.x,p2.y); xrayCtx.stroke(); }
+  };
+  drawBoneSegment(sL,eL); drawBoneSegment(eL,pL);
+  drawBoneSegment(sR,eR); drawBoneSegment(eR,pR);
+}
+
+// Scatto della radiografia: cattura il canvas così com'è (video + scheletro)
+document.getElementById('btnXraySnap').addEventListener('click', ()=>{
+  const flash = document.getElementById('xrayFlash');
+  flash.classList.add('flash-active');
+  setTimeout(()=> flash.classList.remove('flash-active'), 400);
+  const dataUrl = xrayCanvasEl.toDataURL('image/jpeg');
+  document.getElementById('xrayPreviewImg').src = dataUrl;
+  document.getElementById('xrayPreviewModal').classList.remove('hidden');
+});
+document.getElementById('btnXrayPreviewClose').addEventListener('click', ()=>{
+  document.getElementById('xrayPreviewModal').classList.add('hidden');
+});
+document.getElementById('btnXrayPreviewSave').addEventListener('click', ()=>{
+  const link = document.createElement('a');
+  link.download = 'radiografia-pupazzo.jpg';
+  link.href = document.getElementById('xrayPreviewImg').src;
+  link.click();
+});
+
 
 /* =========================================================
    MODULO 4: REFERTO
