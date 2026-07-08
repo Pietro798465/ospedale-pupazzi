@@ -1098,95 +1098,230 @@ function xrayDrawScene(){
   xrayCtx.restore();
 }
 
-// Scheletro della mano: falangi e ossa del palmo
-function xrayDrawHandBones(landmarks, w, h){
-  const chains = [
-    [0,1,2,3,4],     // pollice
-    [0,5,6,7,8],     // indice
-    [9,10,11,12],    // medio
-    [13,14,15,16],   // anulare
-    [0,17,18,19,20], // mignolo
-    [5,9,13,17]      // base del palmo
-  ];
-  xrayCtx.lineWidth = 6; xrayCtx.lineCap = 'round';
+// ---------------------------------------------------------
+// Disegno "a osso": un'asta centrale (diafisi) più stretta e
+// due estremità arrotondate e più larghe (epifisi), come nelle
+// vere ossa lunghe, invece di una semplice linea.
+// ---------------------------------------------------------
+function xrayLongBone(x1,y1,x2,y2, shaftW, headR){
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
+  if(len<2) return;
+  const ux=dx/len, uy=dy/len;
+  const px=-uy, py=ux; // perpendicolare all'osso
+
+  xrayCtx.save();
   xrayCtx.shadowBlur = 14; xrayCtx.shadowColor = '#2be7ff';
-  xrayCtx.strokeStyle = 'rgba(190,233,255,0.92)';
-  chains.forEach(chain=>{
+  xrayCtx.fillStyle = 'rgba(210,245,255,0.92)';
+
+  // Diafisi: l'asta centrale, leggermente più stretta delle estremità
+  xrayCtx.beginPath();
+  xrayCtx.moveTo(x1+px*shaftW*0.5, y1+py*shaftW*0.5);
+  xrayCtx.lineTo(x2+px*shaftW*0.5, y2+py*shaftW*0.5);
+  xrayCtx.lineTo(x2-px*shaftW*0.5, y2-py*shaftW*0.5);
+  xrayCtx.lineTo(x1-px*shaftW*0.5, y1-py*shaftW*0.5);
+  xrayCtx.closePath();
+  xrayCtx.fill();
+
+  // Epifisi: due nodi arrotondati ad ogni estremità, per dare
+  // l'idea delle "teste" più larghe tipiche delle ossa lunghe
+  [[x1,y1],[x2,y2]].forEach(([cx,cy])=>{
     xrayCtx.beginPath();
-    chain.forEach((idx,i)=>{
-      const p = landmarks[idx], x = p.x*w, y = p.y*h;
-      if(i===0) xrayCtx.moveTo(x,y); else xrayCtx.lineTo(x,y);
-    });
+    xrayCtx.arc(cx+px*headR*0.5, cy+py*headR*0.5, headR*0.62, 0, Math.PI*2);
+    xrayCtx.arc(cx-px*headR*0.5, cy-py*headR*0.5, headR*0.62, 0, Math.PI*2);
+    xrayCtx.fill();
+  });
+  xrayCtx.restore();
+}
+
+// Elemento "strutturale" semplice (colonna, clavicole, bacino, piedi):
+// una linea arrotondata, senza le estremità bulbose delle ossa lunghe.
+function xraySpineBone(x1,y1,x2,y2,width){
+  xrayCtx.save();
+  xrayCtx.lineWidth = width; xrayCtx.lineCap = 'round';
+  xrayCtx.shadowBlur = 12; xrayCtx.shadowColor = '#2be7ff';
+  xrayCtx.strokeStyle = 'rgba(190,233,255,0.9)';
+  xrayCtx.beginPath(); xrayCtx.moveTo(x1,y1); xrayCtx.lineTo(x2,y2); xrayCtx.stroke();
+  xrayCtx.restore();
+}
+
+function xrayDrawLongBoneIfVisible(p1,p2, shaftW, headR){
+  if(p1.vis>0.5 && p2.vis>0.5) xrayLongBone(p1.x,p1.y,p2.x,p2.y, shaftW, headR);
+}
+function xrayDrawFootIfVisible(ankle,heel,toe){
+  if(ankle.vis>0.5 && heel.vis>0.5) xraySpineBone(ankle.x,ankle.y,heel.x,heel.y,5);
+  if(ankle.vis>0.5 && toe.vis>0.5) xraySpineBone(ankle.x,ankle.y,toe.x,toe.y,5);
+  if(heel.vis>0.5 && toe.vis>0.5) xraySpineBone(heel.x,heel.y,toe.x,toe.y,4);
+}
+
+// Piccole ali del bacino (creste iliache), solo decorative, per
+// non lasciare il bacino ridotto a una singola linea dritta
+function xrayDrawPelvisWings(hL,hR){
+  const midX=(hL.x+hR.x)/2, midY=(hL.y+hR.y)/2;
+  const spread = Math.abs(hL.x-hR.x)*0.55;
+  xrayCtx.save();
+  xrayCtx.strokeStyle = 'rgba(190,233,255,0.85)';
+  xrayCtx.lineWidth = 4; xrayCtx.lineCap='round';
+  xrayCtx.shadowBlur = 10; xrayCtx.shadowColor = '#2be7ff';
+  [hL,hR].forEach((hip,i)=>{
+    const dir = i===0 ? -1 : 1;
+    xrayCtx.beginPath();
+    xrayCtx.moveTo(hip.x, hip.y);
+    xrayCtx.quadraticCurveTo(hip.x+dir*spread*0.5, hip.y-spread*0.6, midX+dir*spread*0.15, midY-spread*0.55);
     xrayCtx.stroke();
   });
-  landmarks.forEach(p=>{
-    const x=p.x*w, y=p.y*h;
-    xrayCtx.beginPath(); xrayCtx.arc(x,y,5,0,Math.PI*2);
-    xrayCtx.fillStyle = '#ffffff'; xrayCtx.shadowBlur = 10; xrayCtx.shadowColor = '#00ff6a';
-    xrayCtx.fill();
+  xrayCtx.restore();
+}
+
+// Una fila di piccoli dentini scuri, usata sia per l'arcata
+// superiore che per quella inferiore del teschio
+function xrayDrawTeethRow(cx, y, w, h){
+  const n = 7, toothW = w/n;
+  xrayCtx.fillStyle = '#0a1210';
+  for(let i=1;i<n;i++){
+    const x = cx - w/2 + i*toothW;
+    xrayCtx.fillRect(x-0.8, y, 1.6, h);
+  }
+}
+
+// Teschio vero e proprio: calotta cranica, orbite, cavità nasale,
+// mascella con denti e mandibola, invece del semplice cerchio.
+function xrayDrawSkull(cx, cy, r){
+  xrayCtx.save();
+  xrayCtx.shadowBlur = 20; xrayCtx.shadowColor = '#2be7ff';
+  xrayCtx.fillStyle = 'rgba(210,245,255,0.28)';
+  xrayCtx.strokeStyle = 'rgba(230,255,245,0.92)';
+  xrayCtx.lineWidth = 4;
+
+  // Calotta cranica (arrotondata sopra, un po' più stretta verso gli zigomi)
+  xrayCtx.beginPath();
+  xrayCtx.ellipse(cx, cy, r*0.95, r*1.05, 0, Math.PI, 0, false);
+  xrayCtx.lineTo(cx + r*0.85, cy + r*0.35);
+  xrayCtx.quadraticCurveTo(cx + r*0.7, cy + r*0.75, cx + r*0.45, cy + r*0.95);
+  xrayCtx.lineTo(cx - r*0.45, cy + r*0.95);
+  xrayCtx.quadraticCurveTo(cx - r*0.7, cy + r*0.75, cx - r*0.85, cy + r*0.35);
+  xrayCtx.closePath();
+  xrayCtx.fill(); xrayCtx.stroke();
+
+  // Orbite oculari
+  xrayCtx.shadowBlur = 0;
+  xrayCtx.fillStyle = '#000';
+  const eyeR = r*0.24;
+  xrayCtx.beginPath();
+  xrayCtx.ellipse(cx - r*0.36, cy - r*0.05, eyeR, eyeR*1.15, 0, 0, Math.PI*2);
+  xrayCtx.ellipse(cx + r*0.36, cy - r*0.05, eyeR, eyeR*1.15, 0, 0, Math.PI*2);
+  xrayCtx.fill();
+
+  // Cavità nasale
+  xrayCtx.beginPath();
+  xrayCtx.moveTo(cx, cy + r*0.18);
+  xrayCtx.lineTo(cx - r*0.12, cy + r*0.42);
+  xrayCtx.lineTo(cx + r*0.12, cy + r*0.42);
+  xrayCtx.closePath();
+  xrayCtx.fill();
+
+  // Arcata superiore (mascella) con denti
+  xrayCtx.fillStyle = 'rgba(230,255,245,0.9)';
+  const teethY = cy + r*0.92, teethW = r*1.5, teethH = r*0.16;
+  xrayCtx.fillRect(cx - teethW/2, teethY, teethW, teethH);
+  xrayDrawTeethRow(cx, teethY, teethW, teethH);
+
+  // Mandibola (osso mobile della mascella inferiore) con la sua fila di denti
+  xrayCtx.beginPath();
+  xrayCtx.moveTo(cx - r*0.55, teethY + teethH);
+  xrayCtx.quadraticCurveTo(cx, teethY + teethH + r*0.55, cx + r*0.55, teethY + teethH);
+  xrayCtx.lineTo(cx - r*0.55, teethY + teethH);
+  xrayCtx.closePath();
+  xrayCtx.fillStyle = 'rgba(210,245,255,0.22)';
+  xrayCtx.fill();
+  xrayCtx.strokeStyle = 'rgba(230,255,245,0.92)';
+  xrayCtx.lineWidth = 4;
+  xrayCtx.stroke();
+  xrayDrawTeethRow(cx, teethY + teethH + r*0.05, teethW*0.85, teethH*0.85);
+
+  xrayCtx.restore();
+}
+
+// Scheletro della mano: metacarpo e falangi disegnati come vere
+// ossa lunghe (con epifisi), assottigliate verso la punta delle dita
+function xrayDrawHandBones(landmarks, w, h){
+  const chains = [
+    { pts:[0,1,2,3,4],     shaftW:7, headR:9  }, // pollice
+    { pts:[0,5,6,7,8],     shaftW:6, headR:8  }, // indice
+    { pts:[9,10,11,12],    shaftW:6, headR:8  }, // medio
+    { pts:[13,14,15,16],   shaftW:6, headR:8  }, // anulare
+    { pts:[0,17,18,19,20], shaftW:6, headR:8  }, // mignolo
+    { pts:[5,9,13,17],     shaftW:8, headR:10 }  // base del palmo (metacarpo)
+  ];
+  chains.forEach(({pts, shaftW, headR})=>{
+    for(let i=0;i<pts.length-1;i++){
+      const p1=landmarks[pts[i]], p2=landmarks[pts[i+1]];
+      const taper = Math.max(1 - i*0.12, 0.45); // le falangi si assottigliano verso la punta
+      xrayLongBone(p1.x*w, p1.y*h, p2.x*w, p2.y*h, shaftW*taper, headR*taper);
+    }
   });
 }
 
-// Scheletro di torace, bacino, braccia e cranio (stimato dalla posa)
+// Scheletro completo: cranio con mascella/denti, colonna, costole,
+// bacino, braccia e — se il pupazzo/bambino è inquadrato per intero —
+// anche gambe e piedi. Ogni segmento viene disegnato solo se i punti
+// corrispondenti sono davvero visibili nell'inquadratura: se ad
+// esempio le gambe sono fuori campo, semplicemente non compaiono.
 function xrayDrawPoseBones(landmarks, w, h){
-  xrayCtx.lineWidth = 8; xrayCtx.lineCap = 'round';
-  xrayCtx.shadowBlur = 16; xrayCtx.shadowColor = '#2be7ff';
-  xrayCtx.strokeStyle = 'rgba(190,233,255,0.9)';
-
   const getPt = (idx)=>({ x:landmarks[idx].x*w, y:landmarks[idx].y*h, vis:landmarks[idx].visibility });
-  const sL=getPt(11), sR=getPt(12), hL=getPt(23), hR=getPt(24), eL=getPt(13), eR=getPt(14), pL=getPt(15), pR=getPt(16);
+  const sL=getPt(11), sR=getPt(12), hL=getPt(23), hR=getPt(24);
+  const eL=getPt(13), eR=getPt(14), wL=getPt(15), wR=getPt(16);
+  const kL=getPt(25), kR=getPt(26), aL=getPt(27), aR=getPt(28);
+  const heL=getPt(29), heR=getPt(30), fL=getPt(31), fR=getPt(32);
 
+  let sternum=null, pelvisMid=null;
+
+  // Clavicole + sterno/colonna + costole (solo se le spalle sono visibili)
   if(sL.vis>0.5 && sR.vis>0.5){
-    // clavicole
-    xrayCtx.beginPath(); xrayCtx.moveTo(sL.x,sL.y); xrayCtx.lineTo(sR.x,sR.y); xrayCtx.stroke();
-
-    const sternumX=(sL.x+sR.x)/2, sternumY=(sL.y+sR.y)/2;
-    const pelvisX=(hL.x+hR.x)/2, pelvisY=(hL.y+hR.y)/2;
-
-    // colonna/sterno
-    xrayCtx.beginPath(); xrayCtx.moveTo(sternumX,sternumY); xrayCtx.lineTo(pelvisX,pelvisY); xrayCtx.stroke();
-
-    // costole simulate
-    xrayCtx.lineWidth = 3;
-    for(let i=1;i<=4;i++){
-      const ribY = sternumY + (pelvisY-sternumY)*(i*0.18);
-      const ribW = Math.abs(sL.x-sR.x)*(0.5-(i*0.05));
-      xrayCtx.beginPath();
-      xrayCtx.ellipse(sternumX, ribY, ribW, 12, 0, 0, Math.PI);
-      xrayCtx.stroke();
-    }
-    xrayCtx.lineWidth = 8;
-
-    // cranio stimato sopra lo sterno
-    const headRadius = Math.abs(sL.x-sR.x)*0.28;
-    const headY = sternumY - headRadius*1.8;
-    xrayCtx.save();
-    xrayCtx.shadowBlur = 22; xrayCtx.shadowColor = '#2be7ff';
-    xrayCtx.fillStyle = 'rgba(20,40,45,0.3)';
-    xrayCtx.strokeStyle = 'rgba(230,255,245,0.9)';
-    xrayCtx.lineWidth = 5;
-    xrayCtx.beginPath(); xrayCtx.arc(sternumX, headY, headRadius, 0, Math.PI*2);
-    xrayCtx.fill(); xrayCtx.stroke();
-    xrayCtx.fillStyle = 'rgba(230,255,245,0.8)';
-    xrayCtx.fillRect(sternumX-headRadius*0.4, headY+headRadius*0.7, headRadius*0.8, headRadius*0.4);
-    xrayCtx.fillStyle = '#000';
-    xrayCtx.shadowBlur = 0;
-    xrayCtx.beginPath();
-    xrayCtx.arc(sternumX-headRadius*0.35, headY+headRadius*0.1, headRadius*0.22, 0, Math.PI*2);
-    xrayCtx.arc(sternumX+headRadius*0.35, headY+headRadius*0.1, headRadius*0.22, 0, Math.PI*2);
-    xrayCtx.fill();
-    xrayCtx.restore();
+    xraySpineBone(sL.x,sL.y,sR.x,sR.y,5);
+    sternum = { x:(sL.x+sR.x)/2, y:(sL.y+sR.y)/2 };
   }
-
-  xrayCtx.lineWidth = 8;
+  // Bacino + ali iliache (solo se i fianchi sono visibili)
   if(hL.vis>0.5 && hR.vis>0.5){
-    xrayCtx.beginPath(); xrayCtx.moveTo(hL.x,hL.y); xrayCtx.lineTo(hR.x,hR.y); xrayCtx.stroke();
+    xraySpineBone(hL.x,hL.y,hR.x,hR.y,6);
+    pelvisMid = { x:(hL.x+hR.x)/2, y:(hL.y+hR.y)/2 };
+    xrayDrawPelvisWings(hL,hR);
   }
-  const drawBoneSegment=(p1,p2)=>{
-    if(p1.vis>0.5 && p2.vis>0.5){ xrayCtx.beginPath(); xrayCtx.moveTo(p1.x,p1.y); xrayCtx.lineTo(p2.x,p2.y); xrayCtx.stroke(); }
-  };
-  drawBoneSegment(sL,eL); drawBoneSegment(eL,pL);
-  drawBoneSegment(sR,eR); drawBoneSegment(eR,pR);
+  if(sternum && pelvisMid){
+    xraySpineBone(sternum.x,sternum.y,pelvisMid.x,pelvisMid.y,5);
+    for(let i=1;i<=4;i++){
+      const ribY = sternum.y + (pelvisMid.y-sternum.y)*(i*0.18);
+      const ribW = Math.abs(sL.x-sR.x)*(0.5-(i*0.05));
+      xrayCtx.save();
+      xrayCtx.lineWidth=3; xrayCtx.shadowBlur=10; xrayCtx.shadowColor='#2be7ff';
+      xrayCtx.strokeStyle='rgba(190,233,255,0.85)';
+      xrayCtx.beginPath(); xrayCtx.ellipse(sternum.x, ribY, ribW, 12, 0, 0, Math.PI); xrayCtx.stroke();
+      xrayCtx.restore();
+    }
+  }
+
+  // Teschio con mascella e denti (stimato sopra lo sterno)
+  if(sternum){
+    const headRadius = Math.abs(sL.x-sR.x)*0.30 || 40;
+    const headY = sternum.y - headRadius*2.0;
+    xrayDrawSkull(sternum.x, headY, headRadius);
+  }
+
+  // Braccia: omero + avambraccio, come vere ossa lunghe
+  xrayDrawLongBoneIfVisible(sL, eL, 9, 13);
+  xrayDrawLongBoneIfVisible(eL, wL, 7, 10);
+  xrayDrawLongBoneIfVisible(sR, eR, 9, 13);
+  xrayDrawLongBoneIfVisible(eR, wR, 7, 10);
+
+  // Gambe: femore + tibia/perone — compaiono solo se il pupazzo
+  // è inquadrato abbastanza in basso da mostrarle
+  xrayDrawLongBoneIfVisible(hL, kL, 12, 16);
+  xrayDrawLongBoneIfVisible(kL, aL, 9, 12);
+  xrayDrawLongBoneIfVisible(hR, kR, 12, 16);
+  xrayDrawLongBoneIfVisible(kR, aR, 9, 12);
+
+  // Piedi: caviglia-tallone-punta, solo se presenti nell'inquadratura
+  xrayDrawFootIfVisible(aL, heL, fL);
+  xrayDrawFootIfVisible(aR, heR, fR);
 }
 
 // Scatto della radiografia: cattura il canvas così com'è (video + scheletro)
